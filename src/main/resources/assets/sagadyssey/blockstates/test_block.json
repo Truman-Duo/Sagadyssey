@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "sagadyssey:block/test_block"
+    }
+  }
+}
