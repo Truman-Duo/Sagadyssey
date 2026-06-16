@@ -1,7 +1,7 @@
-package com.jgeted.sagadyssey.network;
+package com.jgeted.sagadyssey.core.network;
 
 import com.jgeted.sagadyssey.Sagadyssey;
-import net.minecraft.network.RegistryFriendlyByteBuf;
+import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
@@ -15,18 +15,19 @@ public record ChatPayload(String message) implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<ChatPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(Sagadyssey.MOD_ID, "chat_message"));
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, ChatPayload> STREAM_CODEC =
-            new StreamCodec<>() {
-                @Override
-                public ChatPayload decode(RegistryFriendlyByteBuf buffer) {
-                    return new ChatPayload(buffer.readUtf(256));
-                }
-
-                @Override
-                public void encode(RegistryFriendlyByteBuf buffer, ChatPayload value) {
-                    buffer.writeUtf(value.message, 256);
-                }
-            };
+    public static final StreamCodec<ByteBuf, ChatPayload> STREAM_CODEC = StreamCodec.of(
+            (buf, packet) -> {
+                byte[] bytes = packet.message.getBytes();
+                buf.writeInt(bytes.length);
+                buf.writeBytes(bytes);
+            },
+            buf -> {
+                int length = buf.readInt();
+                byte[] bytes = new byte[length];
+                buf.readBytes(bytes);
+                return new ChatPayload(new String(bytes));
+            }
+    );
 
     @Override
     public Type<? extends CustomPacketPayload> type() {

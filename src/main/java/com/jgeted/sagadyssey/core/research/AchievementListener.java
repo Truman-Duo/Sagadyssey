@@ -1,6 +1,7 @@
 package com.jgeted.sagadyssey.core.research;
 
 import com.jgeted.sagadyssey.Sagadyssey;
+import com.jgeted.sagadyssey.core.config.SagadysseyConfig;
 import net.minecraft.advancements.AdvancementType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -19,9 +20,6 @@ import com.mojang.logging.LogUtils;
 public class AchievementListener {
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    private static final int NORMAL_POINTS = 2;
-    private static final int CHALLENGE_POINTS = 5;
-
     @SubscribeEvent
     public static void onAdvancementEarned(AdvancementEvent.AdvancementEarnEvent event) {
         var advancement = event.getAdvancement();
@@ -34,7 +32,9 @@ public class AchievementListener {
         AdvancementType type = advancement.value().display()
                 .map(display -> display.getType()).orElse(AdvancementType.TASK);
 
-        int points = (type == AdvancementType.CHALLENGE) ? CHALLENGE_POINTS : NORMAL_POINTS;
+        int points = (type == AdvancementType.CHALLENGE)
+                ? SagadysseyConfig.CHALLENGE_ADVANCEMENT_POINTS.get()
+                : SagadysseyConfig.NORMAL_ADVANCEMENT_POINTS.get();
 
         ResearchAttachments.addPoints(player, points);
         player.displayClientMessage(

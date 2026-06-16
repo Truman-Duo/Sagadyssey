@@ -1,7 +1,7 @@
 package com.jgeted.sagadyssey.client;
 
 import com.jgeted.sagadyssey.menu.TestMenu;
-import com.jgeted.sagadyssey.network.ChatPayload;
+import com.jgeted.sagadyssey.core.network.ChatPayload;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;

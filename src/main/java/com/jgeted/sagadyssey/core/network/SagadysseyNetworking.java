@@ -1,6 +1,5 @@
 package com.jgeted.sagadyssey.core.network;
 
-import com.jgeted.sagadyssey.network.ChatPayload;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -10,7 +9,6 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * 所有数据包类型在这里统一注册。
  */
 public class SagadysseyNetworking {
-    public static final String MOD_ID = "sagadyssey";
     private static final String PROTOCOL_VERSION = "1";
 
     @SubscribeEvent

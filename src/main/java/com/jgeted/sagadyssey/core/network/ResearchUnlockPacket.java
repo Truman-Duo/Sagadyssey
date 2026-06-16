@@ -1,5 +1,6 @@
 package com.jgeted.sagadyssey.core.network;
 
+import com.jgeted.sagadyssey.Sagadyssey;
 import com.jgeted.sagadyssey.core.research.ResearchAttachments;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.chat.Component;
@@ -15,7 +16,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 public record ResearchUnlockPacket(String researchId) implements CustomPacketPayload {
 
     public static final Type<ResearchUnlockPacket> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(SagadysseyNetworking.MOD_ID, "research_unlock")
+            ResourceLocation.fromNamespaceAndPath(Sagadyssey.MOD_ID, "research_unlock")
     );
 
     public static final StreamCodec<ByteBuf, ResearchUnlockPacket> STREAM_CODEC = StreamCodec.of(
