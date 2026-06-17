@@ -2,6 +2,7 @@ package com.jgeted.sagadyssey.npc.network;
 
 import com.jgeted.sagadyssey.Sagadyssey;
 import com.jgeted.sagadyssey.npc.entity.NpcBase;
+import com.jgeted.sagadyssey.npc.entity.NpcCommand;
 import com.jgeted.sagadyssey.npc.gui.NpcCommandScreen;
 import com.jgeted.sagadyssey.npc.gui.NpcRecruitScreen;
 import io.netty.buffer.ByteBuf;
@@ -29,7 +30,8 @@ public record NpcStatsPayload(
         int kills,
         int moral,
         int recruitmentCost,
-        boolean isOwned
+        boolean isOwned,
+        String commandName
 ) implements CustomPacketPayload {
 
     public static final Type<NpcStatsPayload> TYPE = new Type<>(
@@ -52,6 +54,7 @@ public record NpcStatsPayload(
                 buf.writeInt(packet.moral);
                 buf.writeInt(packet.recruitmentCost);
                 buf.writeBoolean(packet.isOwned);
+                buf.writeByte(NpcCommand.valueOf(packet.commandName()).ordinal());
             },
             buf -> new NpcStatsPayload(
                     buf.readInt(),
@@ -67,7 +70,8 @@ public record NpcStatsPayload(
                     buf.readInt(),
                     buf.readInt(),
                     buf.readInt(),
-                    buf.readBoolean()
+                    buf.readBoolean(),
+                    NpcCommand.values()[buf.readByte()].name()
             )
     );
 
@@ -125,7 +129,8 @@ public record NpcStatsPayload(
                 npc.getKills(),
                 npc.getMoral(),
                 npc.getRecruitmentCost(),
-                npc.isOwned()
+                npc.isOwned(),
+                npc.getCommand().name()
         );
     }
 }

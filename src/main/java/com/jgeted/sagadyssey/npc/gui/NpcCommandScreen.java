@@ -28,6 +28,7 @@ public class NpcCommandScreen extends Screen {
     private final int experience;
     private final int kills;
     private final int moral;
+    private final String commandName;
 
     private static final int PANEL_WIDTH = 176;
     private static final int PANEL_HEIGHT = 170;
@@ -49,6 +50,7 @@ public class NpcCommandScreen extends Screen {
         this.experience = data.experience();
         this.kills = data.kills();
         this.moral = data.moral();
+        this.commandName = data.commandName();
     }
 
     @Override
@@ -63,7 +65,7 @@ public class NpcCommandScreen extends Screen {
         int rightX = panelLeft + PANEL_WIDTH - 18 - btnW;
 
         addRenderableWidget(Button.builder(
-                Component.literal("跟随我"),
+                Component.literal("跟随我" + (commandName.equals("FOLLOW") ? " ✓" : "")),
                 btn -> {
                     PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "follow"));
                     this.onClose();
@@ -72,7 +74,7 @@ public class NpcCommandScreen extends Screen {
                 .build());
 
         addRenderableWidget(Button.builder(
-                Component.literal("原地待命"),
+                Component.literal("原地待命" + (commandName.equals("STAY") ? " ✓" : "")),
                 btn -> {
                     PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "stay"));
                     this.onClose();

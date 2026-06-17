@@ -3,6 +3,7 @@ package com.jgeted.sagadyssey.npc.network;
 import com.jgeted.sagadyssey.Sagadyssey;
 import com.jgeted.sagadyssey.npc.container.NpcEquipMenuProvider;
 import com.jgeted.sagadyssey.npc.entity.NpcBase;
+import com.jgeted.sagadyssey.npc.entity.NpcCommand;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
@@ -194,14 +195,14 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
 
         switch (action) {
             case "follow" -> {
+                npc.setCommand(NpcCommand.FOLLOW);
                 player.displayClientMessage(
                         Component.literal("§a已命令 " + npcName + " 跟随你"), true);
-                // TODO: 后续接入 AI 行为
             }
             case "stay" -> {
+                npc.setCommand(NpcCommand.STAY);
                 player.displayClientMessage(
                         Component.literal("§a已命令 " + npcName + " 原地待命"), true);
-                // TODO: 后续接入 AI 行为
             }
         }
     }

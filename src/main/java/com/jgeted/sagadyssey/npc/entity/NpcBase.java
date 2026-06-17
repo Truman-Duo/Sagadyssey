@@ -57,6 +57,9 @@ public class NpcBase extends PathfinderMob {
     /** 招募费用（绿宝石数量） */
     private int recruitmentCost = 3;
 
+    /** 当前行为指令 */
+    private NpcCommand command = NpcCommand.IDLE;
+
     /** 主人 UUID，null 表示未被招募 */
     @Nullable
     private UUID ownerUUID = null;
@@ -112,6 +115,9 @@ public class NpcBase extends PathfinderMob {
 
     public int getRecruitmentCost() { return recruitmentCost; }
     public void setRecruitmentCost(int cost) { this.recruitmentCost = Math.max(1, cost); }
+
+    public NpcCommand getCommand() { return command; }
+    public void setCommand(NpcCommand command) { this.command = command; }
 
     @Nullable
     public UUID getOwnerUUID() { return ownerUUID; }
@@ -213,9 +219,11 @@ public class NpcBase extends PathfinderMob {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
-        this.goalSelector.addGoal(1, new RandomStrollGoal(this, 1.0D));
-        this.goalSelector.addGoal(2, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        this.goalSelector.addGoal(3, new RandomLookAroundGoal(this));
+        this.goalSelector.addGoal(1, new com.jgeted.sagadyssey.npc.ai.StayGoal(this));
+        this.goalSelector.addGoal(2, new com.jgeted.sagadyssey.npc.ai.FollowOwnerGoal(this, 1.0D, 3.0F, 12.0F));
+        this.goalSelector.addGoal(3, new RandomStrollGoal(this, 1.0D));
+        this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));
     }
 
     /** 属性定义（注册实体时调用） */
@@ -251,6 +259,7 @@ public class NpcBase extends PathfinderMob {
         tag.putInt("Kills", this.kills);
         tag.putInt("Moral", this.moral);
         tag.putInt("RecruitmentCost", this.recruitmentCost);
+        tag.putString("NpcCommand", this.command.name());
         if (this.ownerUUID != null) {
             tag.putUUID("OwnerUUID", this.ownerUUID);
         }
@@ -296,6 +305,13 @@ public class NpcBase extends PathfinderMob {
             this.ownerUUID = tag.getUUID("OwnerUUID");
         } else {
             this.ownerUUID = null;
+        }
+        if (tag.contains("NpcCommand")) {
+            try {
+                this.command = NpcCommand.valueOf(tag.getString("NpcCommand"));
+            } catch (IllegalArgumentException e) {
+                this.command = NpcCommand.IDLE;
+            }
         }
 
         if (tag.contains("BowSlot")) {
