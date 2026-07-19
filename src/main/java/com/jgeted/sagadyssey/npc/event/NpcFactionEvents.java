@@ -11,6 +11,7 @@ import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
+import java.util.HashMap;
 import java.util.UUID;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,18 +26,19 @@ public class NpcFactionEvents {
 
     private long lastDayCheckTick = 0;
 
-    /** 缓存最近一次 LivingDamageEvent 的伤害量，供后续 LivingDeathEvent 使用 */
-    private static final Map<UUID, Float> lastDamageDealt = new ConcurrentHashMap<>();
+    /** 玩家 UUID → (目标实体 UUID → 最后造成的伤害量) */
+    private static final Map<UUID, Map<UUID, Float>> recentDamage = new ConcurrentHashMap<>();
 
     /**
-     * 缓存玩家对 NPC 造成的伤害量（供死亡事件中的误伤宽容使用）。
+     * 缓存玩家对实体造成的实际伤害量（供死亡事件中的误伤宽容使用）。
      */
     @SubscribeEvent
     public void onLivingDamage(LivingDamageEvent.Pre event) {
-        if (event.getEntity() instanceof NpcBase npc
-                && event.getSource().getEntity() instanceof ServerPlayer player) {
-            lastDamageDealt.put(npc.getUUID(), event.getNewDamage());
-        }
+        if (!(event.getSource().getEntity() instanceof ServerPlayer player)) return;
+        if (event.getEntity().level().isClientSide) return;
+
+        recentDamage.computeIfAbsent(player.getUUID(), k -> new HashMap<>())
+                .put(event.getEntity().getUUID(), event.getNewDamage());
     }
 
     /**
@@ -63,13 +65,16 @@ public class NpcFactionEvents {
         // 应用误伤宽容（如果适用）
         // 使用缓存的伤害量而非攻击者血量
         long gameTime = entity.level().getGameTime();
-        float damageDealt = lastDamageDealt.getOrDefault(npc.getUUID(), entity.getMaxHealth());
-        lastDamageDealt.remove(npc.getUUID());
+        float damageAmount = recentDamage.getOrDefault(player.getUUID(), Map.of())
+                .getOrDefault(entity.getUUID(), 0f);
         delta = StandingModifier.applyMercyTolerance(
                 player.getUUID(), faction.id(), delta,
-                damageDealt,
+                damageAmount,
                 entity.getMaxHealth(), gameTime
         );
+
+        // 清理缓存（避免内存泄漏）
+        recentDamage.getOrDefault(player.getUUID(), Map.of()).remove(entity.getUUID());
 
         // 记录互动（重置衰减计时器）
         var standings = FactionAttachments.getStandings(player);
