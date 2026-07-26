@@ -1,0 +1,11 @@
+{
+  "assignments": [
+    {"entity": "sagadyssey:npc_base", "faction": "sagadyssey:kingdom", "weight": 25},
+    {"entity": "sagadyssey:npc_base", "faction": "sagadyssey:merchant_guild", "weight": 15},
+    {"entity": "sagadyssey:npc_base", "faction": "sagadyssey:church", "weight": 10},
+    {"entity": "sagadyssey:npc_base", "faction": "sagadyssey:dwarven", "weight": 10},
+    {"entity": "sagadyssey:npc_base", "faction": "sagadyssey:mystic", "weight": 5},
+    {"entity": "sagadyssey:npc_base", "faction": "sagadyssey:wilderness", "weight": 25},
+    {"entity": "sagadyssey:npc_base", "faction": "sagadyssey:bandit", "weight": 10}
+  ]
+}

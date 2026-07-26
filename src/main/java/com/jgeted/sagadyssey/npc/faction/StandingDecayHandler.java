@@ -53,10 +53,11 @@ public class StandingDecayHandler {
     private void processPlayerDecay(ServerPlayer player, long gameTime) {
         FactionStandings standings = FactionAttachments.getStandings(player);
 
-        for (String factionId : standings.getTrackedFactionIds()) {
-            Faction faction = FactionRegistry.get(factionId);
+        // 遍历所有阵营（而非仅 tracked），确保新玩家的默认声望也会衰减
+        for (Faction faction : FactionRegistry.getAllFactions()) {
             if (faction == null || !faction.decayEnabled()) continue;
 
+            String factionId = faction.id();
             long lastInteraction = standings.getLastInteractionTick(factionId);
             if (lastInteraction == 0) {
                 // 从未互动过，使用当前时间作为起点

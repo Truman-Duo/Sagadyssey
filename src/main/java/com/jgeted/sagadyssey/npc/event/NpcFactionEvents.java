@@ -58,9 +58,7 @@ public class NpcFactionEvents {
         if (faction == null) return;
 
         // 计算声望变化量：普通=-10, 精英=-15, Boss=-20
-        int delta;
-        // TODO: 通过 IFactionInteractable 检测精英/Boss
-        delta = -10;
+        int delta = npc.getNpcTier().getStandingPenalty();
 
         // 应用误伤宽容（如果适用）
         // 使用缓存的伤害量而非攻击者血量
@@ -139,15 +137,15 @@ public class NpcFactionEvents {
         var targetFaction = event.getFaction();
         if (targetFaction == null || "sagadyssey:bandit".equals(targetFaction.id())) return;
 
-        // 仅在首次从 HONORED 以下升到 HONORED 时触发（不含降级回 HONORED）
-        if (event.getOldLevel().ordinal() >= StandingLevel.HONORED.ordinal()) return;
-
         var bandit = FactionRegistry.get("sagadyssey:bandit");
         if (bandit == null) return;
 
         var standings = FactionAttachments.getStandings(player);
-        // 如果已经远超 HONORED 阈值（例如通过指令直接跳级），不触发
-        if (standings.getValue(targetFaction) >= StandingLevel.REVERED.getMinValue()) return;
+        // 已对该阵营应用过惩罚则跳过（防止降级后再次升级重复触发）
+        if (standings.hasAppliedLoyaltyPenalty(targetFaction.id())) return;
+
+        // 标记已应用，无论新旧等级
+        standings.markLoyaltyPenaltyApplied(targetFaction.id());
 
         StandingModifier.applyModification(player, bandit, -15,
                 "standing.reason.showed_loyalty_to_civilized");

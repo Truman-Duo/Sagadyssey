@@ -1,6 +1,7 @@
 package com.jgeted.sagadyssey.core;
 
 import com.jgeted.sagadyssey.core.gui.ResearchScreen;
+
 import com.jgeted.sagadyssey.npc.client.NpcRenderer;
 import com.jgeted.sagadyssey.npc.faction.gui.ReputationChartScreen;
 import com.jgeted.sagadyssey.npc.registry.NpcEntityTypes;
@@ -41,6 +42,7 @@ public class SagadysseyClient {
     public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(NpcEntityTypes.NPC_BASE.get(), NpcRenderer::new);
     }
+
 
     @EventBusSubscriber(value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
     public static class KeyHandler {

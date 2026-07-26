@@ -56,6 +56,9 @@ CLAUDE.md
 extract_docx.py
 build.bat
 
+### NeoForge 生成缓存 ###
+net/
+
 ### 模板 ###
 sagadyssey-template-1.21.1/
 TEMPLATE_LICENSE.txt

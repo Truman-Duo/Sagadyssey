@@ -3,6 +3,7 @@ package com.jgeted.sagadyssey.npc.entity;
 import com.jgeted.sagadyssey.npc.faction.Faction;
 import com.jgeted.sagadyssey.npc.faction.FactionAttachments;
 import com.jgeted.sagadyssey.npc.faction.FactionRegistry;
+import com.jgeted.sagadyssey.npc.faction.IFactionInteractable;
 import com.jgeted.sagadyssey.npc.faction.NpcFaction;
 import com.jgeted.sagadyssey.npc.faction.StandingLevel;
 import com.jgeted.sagadyssey.npc.network.NpcInteractionPacket;
@@ -46,7 +47,7 @@ import java.util.*;
  *   Armor → 原版 Attribute 系统
  *   Lvl / Exp / Kills / Moral / Cost / OwnerUUID → 自定义 NBT
  */
-public class NpcBase extends PathfinderMob {
+public class NpcBase extends PathfinderMob implements IFactionInteractable {
 
     // === 自定义属性（NBT 持久化） ===
     private String customName = "NPC";
@@ -87,6 +88,9 @@ public class NpcBase extends PathfinderMob {
 
     /** 阵营（新系统：基于 FactionRegistry 的 Faction 引用） */
     private Faction faction = FactionRegistry.get("sagadyssey:wilderness");
+
+    /** NPC 等级类型（普通/精英/Boss），影响击杀声望惩罚 */
+    private IFactionInteractable.NpcTier npcTier = IFactionInteractable.NpcTier.NORMAL;
 
     /** 主人 UUID，null 表示未被招募 */
     @Nullable
@@ -277,6 +281,10 @@ public class NpcBase extends PathfinderMob {
     public Faction getFaction() { return faction; }
     public void setFaction(Faction faction) { this.faction = faction; }
 
+    @Override
+    public IFactionInteractable.NpcTier getNpcTier() { return npcTier; }
+    public void setNpcTier(IFactionInteractable.NpcTier tier) { this.npcTier = tier; }
+
     /** 获取旧版 NpcFaction（向后兼容，基于阵营的敌对性判定） */
     public NpcFaction getLegacyFaction() {
         if (faction == null) return NpcFaction.NEUTRAL;
@@ -460,6 +468,7 @@ public class NpcBase extends PathfinderMob {
         tag.putInt("RecruitmentCost", this.recruitmentCost);
         tag.putString("NpcCommand", this.command.name());
         tag.putString("Faction", this.faction != null ? this.faction.id() : "sagadyssey:wilderness");
+        tag.putString("NpcTier", this.npcTier.name());
         if (this.ownerUUID != null) {
             tag.putUUID("OwnerUUID", this.ownerUUID);
         }
@@ -561,6 +570,13 @@ public class NpcBase extends PathfinderMob {
                 }
             } catch (Exception e) {
                 this.faction = FactionRegistry.get("sagadyssey:wilderness");
+            }
+        }
+        if (tag.contains("NpcTier")) {
+            try {
+                this.npcTier = IFactionInteractable.NpcTier.valueOf(tag.getString("NpcTier"));
+            } catch (IllegalArgumentException e) {
+                this.npcTier = IFactionInteractable.NpcTier.NORMAL;
             }
         }
 

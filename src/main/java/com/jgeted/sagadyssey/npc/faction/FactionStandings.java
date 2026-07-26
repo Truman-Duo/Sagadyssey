@@ -36,6 +36,9 @@ public class FactionStandings {
     private final Map<String, Long> lastInteractionTick = new HashMap<>();
     private final Map<String, Integer> dailyRippleReceived = new HashMap<>();
 
+    /** 已触发劫掠者忠诚惩罚的文明阵营ID集合（不持久化） */
+    private final Set<String> loyaltyPenaltyApplied = new HashSet<>();
+
     public FactionStandings() {}
 
     // === 查询方法 ===
@@ -48,7 +51,12 @@ public class FactionStandings {
 
     /** 获取玩家对某阵营的声望值（按 ID 字符串） */
     public int getValue(String factionId) {
-        return standings.getOrDefault(factionId, 0);
+        if (standings.containsKey(factionId)) {
+            return standings.get(factionId);
+        }
+        // 未知阵营：回退到该阵营的 defaultStanding
+        Faction faction = FactionRegistry.get(factionId);
+        return faction != null ? faction.defaultStanding() : 0;
     }
 
     /** 获取声望等级 */
@@ -139,10 +147,8 @@ public class FactionStandings {
         StandingLevel oldLevel = StandingLevel.fromValue(oldValue);
         StandingLevel newLevel = StandingLevel.fromValue(newValue);
 
-        if (oldLevel != newLevel) {
-            // 触发 NeoForge EVENT_BUS 事件（External 调用侧处理）
-            // StandingLevelChangeEvent 由 StandingModifier 负责发布
-        }
+        // 注意：此方法不触发 StandingLevelChangeEvent（没有 Player 引用）。
+        // 需要事件的调用方应使用 StandingModifier.applyModification()。
     }
 
     /** 强制设置声望值（指令用） */
@@ -188,6 +194,16 @@ public class FactionStandings {
     /** 获取所有已记录过互动的阵营 ID 集合 */
     public Set<String> getTrackedFactionIds() {
         return standings.keySet();
+    }
+
+    /** 是否已对该文明阵营触发过劫掠者忠诚惩罚 */
+    public boolean hasAppliedLoyaltyPenalty(String factionId) {
+        return loyaltyPenaltyApplied.contains(factionId);
+    }
+
+    /** 标记已对该文明阵营触发劫掠者忠诚惩罚 */
+    public void markLoyaltyPenaltyApplied(String factionId) {
+        loyaltyPenaltyApplied.add(factionId);
     }
 
     // === 内部数据访问 ===
