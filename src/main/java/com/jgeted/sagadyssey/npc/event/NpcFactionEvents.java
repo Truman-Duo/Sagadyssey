@@ -1,5 +1,6 @@
 package com.jgeted.sagadyssey.npc.event;
 
+import com.jgeted.sagadyssey.Sagadyssey;
 import com.jgeted.sagadyssey.npc.entity.NpcBase;
 import com.jgeted.sagadyssey.npc.faction.*;
 import net.minecraft.server.level.ServerPlayer;
@@ -57,6 +58,17 @@ public class NpcFactionEvents {
         var faction = npc.getFaction();
         if (faction == null) return;
 
+        // player 阵营 NPC 被击杀：按 originalFaction 的声望规则处理
+        String effectiveFactionId;
+        if ("sagadyssey:player".equals(faction.id())) {
+            String orig = npc.getOriginalFaction();
+            effectiveFactionId = orig != null ? orig : "sagadyssey:wilderness";
+            Sagadyssey.LOGGER.info("玩家 {} 击杀了玩家阵营 NPC（原阵营: {}），ownerUUID={}",
+                    player.getGameProfile().getName(), effectiveFactionId, npc.getOwnerUUID());
+        } else {
+            effectiveFactionId = faction.id();
+        }
+
         // 计算声望变化量：普通=-10, 精英=-15, Boss=-20
         int delta = npc.getNpcTier().getStandingPenalty();
 
@@ -66,7 +78,7 @@ public class NpcFactionEvents {
         float damageAmount = recentDamage.getOrDefault(player.getUUID(), Map.of())
                 .getOrDefault(entity.getUUID(), 0f);
         delta = StandingModifier.applyMercyTolerance(
-                player.getUUID(), faction.id(), delta,
+                player.getUUID(), effectiveFactionId, delta,
                 damageAmount,
                 entity.getMaxHealth(), gameTime
         );
@@ -76,10 +88,12 @@ public class NpcFactionEvents {
 
         // 记录互动（重置衰减计时器）
         var standings = FactionAttachments.getStandings(player);
-        standings.recordInteraction(faction.id(), gameTime);
+        standings.recordInteraction(effectiveFactionId, gameTime);
 
-        // 应用声望修改（涟漪自动处理敌对阵营正向声望）
-        StandingModifier.applyModification(player, faction, delta,
+        // 获取有效阵营对象并应用声望修改（涟漪自动处理敌对阵营正向声望）
+        Faction effectiveFaction = FactionRegistry.get(effectiveFactionId);
+        if (effectiveFaction == null) effectiveFaction = FactionRegistry.get("sagadyssey:wilderness");
+        StandingModifier.applyModification(player, effectiveFaction, delta,
                 "standing.reason.killed_npc");
     }
 

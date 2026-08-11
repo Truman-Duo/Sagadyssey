@@ -3,6 +3,7 @@ package com.jgeted.sagadyssey.npc.ai;
 import com.jgeted.sagadyssey.npc.entity.NpcBase;
 import com.jgeted.sagadyssey.npc.faction.FactionAttachments;
 import com.jgeted.sagadyssey.npc.faction.FactionRegistry;
+import com.jgeted.sagadyssey.npc.faction.StandingModifier;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.player.Player;
@@ -20,6 +21,7 @@ import java.util.List;
 public class NpcHostileGoal extends Goal {
 
     private static final double DETECT_RANGE = 16.0D;
+    private static final double DETECT_RANGE_MOUNTED = 24.0D;
     private final NpcBase npc;
     private LivingEntity pendingTarget;
     private int scanCooldown;
@@ -42,7 +44,8 @@ public class NpcHostileGoal extends Goal {
         }
         scanCooldown = 20;
 
-        AABB box = npc.getBoundingBox().inflate(DETECT_RANGE);
+        double range = npc.isPassenger() ? DETECT_RANGE_MOUNTED : DETECT_RANGE;
+        AABB box = npc.getBoundingBox().inflate(range);
         List<Player> players = npc.level().getEntitiesOfClass(Player.class, box,
                 p -> p.isAlive() && !p.isSpectator() && !p.isCreative());
 
@@ -62,12 +65,11 @@ public class NpcHostileGoal extends Goal {
             }
         }
 
-        // 扫描附近的招募 NPC（非主人、非相同阵营）
+        // 扫描附近的已招募 NPC（通过 isHostileBetween 判定是否敌对）
         List<NpcBase> nearbyNpcs = npc.level().getEntitiesOfClass(NpcBase.class, box,
-                n -> n.isAlive() && n.getOwnerUUID() != null
-                        && !n.isOwnedBy(npc.getOwnerUUID())
-                        && n.getFaction() != null
-                        && n.getFaction().canBeHostile());
+                n -> n.isAlive() && n != npc
+                        && StandingModifier.isHostileBetween(
+                                npc, n, npc.getOwnerUUID(), n.getOwnerUUID()));
 
         for (NpcBase n : nearbyNpcs) {
             double dist = npc.distanceToSqr(n);
@@ -96,7 +98,8 @@ public class NpcHostileGoal extends Goal {
         if (target == null || !target.isAlive()) return false;
         if (target instanceof Player p && (p.isSpectator() || p.isCreative())) return false;
         if (npc.isOwnedBy(target.getUUID())) return false;
-        return npc.distanceToSqr(target) <= DETECT_RANGE * DETECT_RANGE;
+        double range = npc.isPassenger() ? DETECT_RANGE_MOUNTED : DETECT_RANGE;
+        return npc.distanceToSqr(target) <= range * range;
     }
 
     @Override

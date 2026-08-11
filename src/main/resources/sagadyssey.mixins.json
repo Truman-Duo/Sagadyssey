@@ -5,7 +5,8 @@
     "mixins": [
         "ChunkGeneratorStructureStateMixin",
         "JigsawPlacementMixin",
-        "StructureMixin"
+        "StructureMixin",
+        "AbstractHorsePassengerMixin"
     ],
     "client": [],
     "server": []

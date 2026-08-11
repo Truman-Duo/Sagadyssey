@@ -24,6 +24,8 @@ import com.jgeted.sagadyssey.registry.ModBlocks;
 import com.jgeted.sagadyssey.registry.ModCreativeTabs;
 import com.jgeted.sagadyssey.registry.ModItems;
 import com.jgeted.sagadyssey.registry.ModMenus;
+import com.jgeted.sagadyssey.vehicle.VehicleEventHandler;
+import com.jgeted.sagadyssey.vehicle.command.MountCommand;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -97,7 +99,8 @@ public class Sagadyssey {
             NpcSpawnCommand.register(event.getDispatcher());
             StructureDiagnosticCommand.register(event.getDispatcher());
             FactionCommand.register(event.getDispatcher());
-            LOGGER.info("命令已注册: /saga test, /research, /saga npc spawn, /saga structures dump, /sagadyssey faction");
+            MountCommand.register(event.getDispatcher());
+            LOGGER.info("命令已注册: /saga test, /research, /saga npc spawn, /saga structures dump, /sagadyssey faction, /saga mount");
         });
 
         // 注册 NPC 经验事件
@@ -108,6 +111,9 @@ public class Sagadyssey {
 
         // 注册阵营声望衰减处理器
         NeoForge.EVENT_BUS.register(new StandingDecayHandler());
+
+        // 注册 Vehicle 事件处理器
+        NeoForge.EVENT_BUS.register(new VehicleEventHandler());
 
         // 注册结构生成系统（建筑 NBT + JSON 配置）
         SagadysseyStructures.STRUCTURE_TYPE_REGISTRY.register(modEventBus);

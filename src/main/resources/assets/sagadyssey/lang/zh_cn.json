@@ -10,6 +10,10 @@
   "faction.sagadyssey.mystic": "秘法学会",
   "faction.sagadyssey.wilderness": "荒野流民",
   "faction.sagadyssey.bandit": "劫掠者",
+  "faction.sagadyssey.player": "玩家阵营",
+
+  "gui.sagadyssey.recruited": " (已招募)",
+  "gui.sagadyssey.dismiss": "解散",
 
   "standing.sagadyssey.revered": "崇拜",
   "standing.sagadyssey.honored": "尊敬",

@@ -32,6 +32,9 @@ public class FactionStandings {
     // === 持久化字段 ===
     private final Map<String, Integer> standings = new HashMap<>();
 
+    /** 玩家自定义阵营名称（null = 使用默认 "玩家阵营"） */
+    private String playerFactionName = null;
+
     // === 瞬态字段（不持久化，服务端运行时使用） ===
     private final Map<String, Long> lastInteractionTick = new HashMap<>();
     private final Map<String, Integer> dailyRippleReceived = new HashMap<>();
@@ -51,6 +54,8 @@ public class FactionStandings {
 
     /** 获取玩家对某阵营的声望值（按 ID 字符串） */
     public int getValue(String factionId) {
+        // player 阵营：玩家对自己永远是 REVERED(100)
+        if ("sagadyssey:player".equals(factionId)) return 100;
         if (standings.containsKey(factionId)) {
             return standings.get(factionId);
         }
@@ -67,12 +72,15 @@ public class FactionStandings {
 
     /** 获取声望等级（按 ID，带缓存） */
     public StandingLevel getLevel(String factionId) {
+        // player 阵营：永不敌对，永远最高声望
+        if ("sagadyssey:player".equals(factionId)) return StandingLevel.REVERED;
         int value = getValue(factionId);
         return StandingLevel.fromValue(value);
     }
 
-    /** 是否敌对（HATED 等级） */
+    /** 是否敌对（HATED 等级）。player 阵营永不敌对 */
     public boolean isHostile(Faction faction) {
+        if ("sagadyssey:player".equals(faction.id())) return false;
         return getLevel(faction) == StandingLevel.HATED;
     }
 
@@ -81,9 +89,34 @@ public class FactionStandings {
         return getLevel(faction).canTrade();
     }
 
-    /** 是否可以从该阵营招募 NPC（需要 REVERED） */
+    /** 是否可以从该阵营招募 NPC（需要 REVERED）。player 阵营不可招募 */
     public boolean canRecruitFrom(Faction faction) {
+        if ("sagadyssey:player".equals(faction.id())) return false;
         return getLevel(faction) == StandingLevel.REVERED;
+    }
+
+    /** 获取玩家自定义阵营名称（null 表示使用默认值） */
+    public String getPlayerFactionName() {
+        return playerFactionName;
+    }
+
+    /**
+     * 设置玩家自定义阵营名称。
+     * 自动过滤 § 格式码、截断至最大长度、trim。
+     *
+     * @param name 新名称，null 或空字符串恢复默认
+     */
+    public void setPlayerFactionName(String name) {
+        if (name == null || name.isBlank()) {
+            this.playerFactionName = null;
+            return;
+        }
+        // 去掉格式码，截断至 16 字符
+        String cleaned = name.replaceAll("§[0-9a-fk-or]", "").trim();
+        if (cleaned.length() > 16) {
+            cleaned = cleaned.substring(0, 16);
+        }
+        this.playerFactionName = cleaned.isEmpty() ? null : cleaned;
     }
 
     /** 获取所有敌对阵营（HATED） */
@@ -215,15 +248,20 @@ public class FactionStandings {
 
     // === Codec 序列化 ===
 
-    /** Codec：只序列化 standings Map，其他字段为瞬态 */
+    /** Codec：序列化 standings Map 和 playerFactionName */
     public static final Codec<FactionStandings> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
                     Codec.unboundedMap(Codec.STRING, Codec.INT)
                             .optionalFieldOf("standings", new HashMap<>())
-                            .forGetter(fs -> fs.standings)
-            ).apply(instance, standings -> {
+                            .forGetter(fs -> fs.standings),
+                    Codec.STRING.optionalFieldOf("playerFactionName", "")
+                            .forGetter(fs -> fs.playerFactionName == null ? "" : fs.playerFactionName)
+            ).apply(instance, (standings, playerFactionName) -> {
                 FactionStandings fs = new FactionStandings();
                 fs.standings.putAll(standings);
+                if (!playerFactionName.isEmpty()) {
+                    fs.playerFactionName = playerFactionName;
+                }
                 return fs;
             })
     );

@@ -22,7 +22,8 @@ import java.util.Map;
  */
 public record FactionDataSyncPayload(
         Map<String, Integer> standings,
-        Map<String, String> relationSummary
+        Map<String, String> relationSummary,
+        String playerFactionName
 ) implements CustomPacketPayload {
 
     public static final Type<FactionDataSyncPayload> TYPE = new Type<>(
@@ -43,6 +44,8 @@ public record FactionDataSyncPayload(
                     writeString(buf, entry.getKey());
                     writeString(buf, entry.getValue());
                 }
+                // playerFactionName
+                writeString(buf, payload.playerFactionName != null ? payload.playerFactionName : "");
             },
             buf -> {
                 // standings map
@@ -61,7 +64,9 @@ public record FactionDataSyncPayload(
                     String value = readString(buf);
                     relations.put(key, value);
                 }
-                return new FactionDataSyncPayload(standings, relations);
+                // playerFactionName
+                String name = readString(buf);
+                return new FactionDataSyncPayload(standings, relations, name.isEmpty() ? null : name);
             }
     );
 
@@ -89,6 +94,7 @@ public record FactionDataSyncPayload(
         context.enqueueWork(() -> {
             ClientFactionCache.updateFromSync(data.standings);
             ClientFactionCache.updateRelationSummary(data.relationSummary);
+            ClientFactionCache.setPlayerFactionName(data.playerFactionName);
         });
     }
 
@@ -96,7 +102,8 @@ public record FactionDataSyncPayload(
     public static FactionDataSyncPayload from(FactionStandings standings) {
         return new FactionDataSyncPayload(
                 new HashMap<>(standings.getStandingsMap()),
-                buildRelationSummary()
+                buildRelationSummary(),
+                standings.getPlayerFactionName()
         );
     }
 

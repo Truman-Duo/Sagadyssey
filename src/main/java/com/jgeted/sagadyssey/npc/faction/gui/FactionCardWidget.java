@@ -2,6 +2,7 @@ package com.jgeted.sagadyssey.npc.faction.gui;
 
 import com.jgeted.sagadyssey.npc.faction.Faction;
 import com.jgeted.sagadyssey.npc.faction.StandingLevel;
+import com.jgeted.sagadyssey.npc.faction.network.ClientFactionCache;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -136,6 +137,7 @@ public final class FactionCardWidget {
             case "sagadyssey:mystic" -> "秘法学会";
             case "sagadyssey:wilderness" -> "荒野流民";
             case "sagadyssey:bandit" -> "劫掠者";
+            case "sagadyssey:player" -> ClientFactionCache.getPlayerFactionDisplayName();
             default -> faction.displayName();
         };
     }

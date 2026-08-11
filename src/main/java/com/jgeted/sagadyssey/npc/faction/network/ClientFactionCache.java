@@ -17,6 +17,9 @@ public final class ClientFactionCache {
     /** 关系摘要（"kingdom→church" → "ALLY"） */
     private static final Map<String, String> relationSummary = new HashMap<>();
 
+    /** 玩家自定义阵营名称（null = 使用默认值 "玩家阵营"） */
+    private static String playerFactionName = null;
+
     private ClientFactionCache() {}
 
     /** 从全量同步更新 */
@@ -38,12 +41,24 @@ public final class ClientFactionCache {
 
     /** 获取某阵营的声望值 */
     public static int getStanding(String factionId) {
+        if ("sagadyssey:player".equals(factionId)) return 100;
         return standings.getOrDefault(factionId, 0);
     }
 
     /** 获取某阵营的声望等级 */
     public static com.jgeted.sagadyssey.npc.faction.StandingLevel getLevel(String factionId) {
+        if ("sagadyssey:player".equals(factionId)) return com.jgeted.sagadyssey.npc.faction.StandingLevel.REVERED;
         return com.jgeted.sagadyssey.npc.faction.StandingLevel.fromValue(getStanding(factionId));
+    }
+
+    /** 更新玩家自定义阵营名称 */
+    public static void setPlayerFactionName(String name) {
+        playerFactionName = (name != null && !name.isEmpty()) ? name : null;
+    }
+
+    /** 获取玩家阵营显示名称（自定义名称或默认 "玩家阵营"） */
+    public static String getPlayerFactionDisplayName() {
+        return playerFactionName != null ? playerFactionName : "玩家阵营";
     }
 
     /** 获取全部声望数据 */

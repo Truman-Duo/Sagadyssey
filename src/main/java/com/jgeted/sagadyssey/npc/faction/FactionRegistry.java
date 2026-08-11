@@ -35,6 +35,26 @@ public final class FactionRegistry {
                     ResourceLocation.fromNamespaceAndPath(Sagadyssey.MOD_ID, "faction")
             );
 
+    /** player 阵营的硬编码兜底（Registry 未加载或 JSON 丢失时使用） */
+    private static final Faction PLAYER_FALLBACK = new Faction(
+            "sagadyssey:player",
+            "faction.sagadyssey.player",
+            65280,
+            100,
+            false,   // canBeHostile
+            false,   // canRecruit
+            ResourceLocation.fromNamespaceAndPath(Sagadyssey.MOD_ID, "textures/gui/faction/player.png"),
+            Optional.empty(),
+            Optional.of(new int[]{200, 200}),
+            1.0f,
+            false,   // decayEnabled
+            100,     // decayTarget
+            0        // decayRatePerDay
+    );
+
+    /** player 阵营 JSON 丢失时只警告一次 */
+    private static boolean playerFactionMissingWarned = false;
+
     /** 全局缓存（任何 Level 的 registryAccess 均可填充，首次命中后生效） */
     private static volatile Registry<Faction> cachedRegistry;
 
@@ -138,5 +158,30 @@ public final class FactionRegistry {
     public static int size() {
         Registry<Faction> reg = getActiveRegistry();
         return reg == null ? 0 : reg.size();
+    }
+
+    /**
+     * 获取 player 阵营（带硬编码兜底）。
+     * <p>
+     * 正常情况下从 DataPackRegistry 读取 player.json；
+     * 如果 Registry 未加载或 JSON 丢失，返回硬编码的 PLAYER_FALLBACK，
+     * 确保已招募 NPC 不会因整合包误删 player.json 而丢失阵营归属。
+     */
+    public static Faction getPlayerFaction() {
+        // Registry 还没加载（早期初始化阶段），直接用兜底
+        if (cachedRegistry == null) {
+            return PLAYER_FALLBACK;
+        }
+        Faction fromRegistry = cachedRegistry.get(
+                ResourceLocation.fromNamespaceAndPath(Sagadyssey.MOD_ID, "player"));
+        if (fromRegistry != null) {
+            return fromRegistry;
+        }
+        // Registry 有数据但查不到 player 阵营 → JSON 可能被误删，告警一次
+        if (!playerFactionMissingWarned) {
+            playerFactionMissingWarned = true;
+            Sagadyssey.LOGGER.warn("数据包中缺少 player.json 阵营定义，使用硬编码兜底");
+        }
+        return PLAYER_FALLBACK;
     }
 }

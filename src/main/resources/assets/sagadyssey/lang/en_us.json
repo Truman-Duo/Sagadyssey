@@ -12,6 +12,10 @@
   "faction.sagadyssey.mystic": "Arcane Society",
   "faction.sagadyssey.wilderness": "Wilderness Wanderers",
   "faction.sagadyssey.bandit": "Bandits",
+  "faction.sagadyssey.player": "Player Faction",
+
+  "gui.sagadyssey.recruited": " (Recruited)",
+  "gui.sagadyssey.dismiss": "Dismiss",
 
   "standing.sagadyssey.revered": "Revered",
   "standing.sagadyssey.honored": "Honored",

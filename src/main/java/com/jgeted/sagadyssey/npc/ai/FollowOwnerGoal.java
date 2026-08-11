@@ -17,11 +17,25 @@ public class FollowOwnerGoal extends Goal {
 
     private final NpcBase npc;
     private final double speed;
-    private final float followDistance;
     private final float stopDistance;
+    private final float followDistance;
     private final PathNavigation navigation;
+
+    /** 骑乘时的跟随距离（比步行更远，马跑得快） */
+    private static final float MOUNTED_FOLLOW_DISTANCE = 96.0F;
+    /** 骑乘时的停止距离（留更多空间给马转身） */
+    private static final float MOUNTED_STOP_DISTANCE = 4.0F;
+
     private LivingEntity owner;
     private int timeToRecalcPath;
+
+    private float getEffectiveStopDistance() {
+        return npc.isPassenger() ? MOUNTED_STOP_DISTANCE : stopDistance;
+    }
+
+    private float getEffectiveFollowDistance() {
+        return npc.isPassenger() ? MOUNTED_FOLLOW_DISTANCE : followDistance;
+    }
 
     public FollowOwnerGoal(NpcBase npc, double speed, float stopDistance, float followDistance) {
         this.npc = npc;
@@ -47,12 +61,14 @@ public class FollowOwnerGoal extends Goal {
         }
 
         double distSqr = npc.distanceToSqr(player);
+        float effectiveStop = getEffectiveStopDistance();
+        float effectiveFollow = getEffectiveFollowDistance();
 
-        if (distSqr < (double) (stopDistance * stopDistance)) {
+        if (distSqr < (double) (effectiveStop * effectiveStop)) {
             return false;
         }
 
-        if (distSqr > (double) (followDistance * followDistance)) {
+        if (distSqr > (double) (effectiveFollow * effectiveFollow)) {
             return false;
         }
 
@@ -73,11 +89,13 @@ public class FollowOwnerGoal extends Goal {
         }
 
         double distSqr = npc.distanceToSqr(owner);
+        float effectiveStop = getEffectiveStopDistance();
+        float effectiveFollow = getEffectiveFollowDistance();
 
-        if (distSqr < (double) (stopDistance * stopDistance)) {
+        if (distSqr < (double) (effectiveStop * effectiveStop)) {
             return false;
         }
-        return distSqr <= (double) (followDistance * followDistance);
+        return distSqr <= (double) (effectiveFollow * effectiveFollow);
     }
 
     @Override
@@ -96,6 +114,8 @@ public class FollowOwnerGoal extends Goal {
     @Override
     public void tick() {
         npc.getLookControl().setLookAt(owner, 10.0F, npc.getMaxHeadXRot());
+
+        if (npc.isPassenger()) return; // 骑乘时由 NpcBase.tick() 驱马逻辑处理移动
 
         if (--timeToRecalcPath <= 0) {
             timeToRecalcPath = adjustedTickDelay(10);

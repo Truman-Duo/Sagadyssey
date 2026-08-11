@@ -53,7 +53,16 @@ public final class RelationNetworkWidget {
             otherIndex++;
 
             // 连线
-            InterFactionRelation rel = matrix.getRelation(focus, other);
+            InterFactionRelation rel;
+            if ("sagadyssey:player".equals(focus.id())) {
+                // 玩家阵营：关系 = 玩家对此阵营的声望映射
+                rel = standingToRelation(ClientFactionCache.getLevel(other.id()));
+            } else if ("sagadyssey:player".equals(other.id())) {
+                // 其他阵营 ← 玩家阵营（防御性处理）
+                rel = standingToRelation(ClientFactionCache.getLevel(focus.id()));
+            } else {
+                rel = matrix.getRelation(focus, other);
+            }
             int lineColor = getLineColor(rel);
             drawLine(graphics, focusX, focusY, otherX, otherY, lineColor);
 
@@ -74,7 +83,10 @@ public final class RelationNetworkWidget {
         // 底部信息：当前声望值 + 涟漪影响
         int standing = ClientFactionCache.getStanding(focus.id());
         StandingLevel level = StandingLevel.fromValue(standing);
-        String info = "当前声望：" + getLevelText(level) + " (" + standing + "/100)";
+        String baseInfo = "当前声望：" + getLevelText(level) + " (" + standing + "/100)";
+        String info = "sagadyssey:player".equals(focus.id())
+                ? baseInfo + "  |  玩家阵营：连线颜色 = 你对各阵营的声望"
+                : baseInfo;
         graphics.drawString(font, Component.literal(info), x + 4, y + h - 12, 0xFF_D4A017);
     }
 
@@ -125,6 +137,17 @@ public final class RelationNetworkWidget {
             case NEUTRAL -> "中立";
             case COLD -> "冷淡";
             case HATED -> "仇恨";
+        };
+    }
+
+    /** 声望等级 → 关系连线类型 */
+    private static InterFactionRelation standingToRelation(StandingLevel level) {
+        return switch (level) {
+            case REVERED -> InterFactionRelation.ALLY;
+            case HONORED -> InterFactionRelation.FRIENDLY;
+            case NEUTRAL -> InterFactionRelation.NEUTRAL;
+            case COLD -> InterFactionRelation.DISTRUSTFUL;
+            case HATED -> InterFactionRelation.ENEMY;
         };
     }
 }

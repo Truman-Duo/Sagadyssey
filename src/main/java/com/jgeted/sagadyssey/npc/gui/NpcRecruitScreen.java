@@ -137,6 +137,10 @@ public class NpcRecruitScreen extends Screen {
         // === 阵营 ===
         Faction faction = FactionRegistry.get(factionName);
         String factionDisplayName = faction != null ? getFactionDisplayName(faction) : factionName;
+        // player 阵营 NPC 显示 "(已招募)"
+        if ("sagadyssey:player".equals(factionName)) {
+            factionDisplayName += Component.translatable("gui.sagadyssey.recruited").getString();
+        }
         int factionColor = faction != null ? faction.color() : 0xFF_FFFF55;
         Component factionComp = Component.literal("阵营：" + factionDisplayName);
         int factionX = panelLeft + (PANEL_WIDTH - font.width(factionComp)) / 2;

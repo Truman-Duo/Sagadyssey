@@ -19,6 +19,7 @@ import java.util.Collection;
  * /sagadyssey faction get &lt;player&gt; &lt;faction&gt;   — 显示声望值和等级
  * /sagadyssey faction set &lt;player&gt; &lt;faction&gt; &lt;value&gt; — 设置声望值
  * /sagadyssey faction reset &lt;player&gt;            — 重置所有声望到 defaultStanding
+ * /sagadyssey faction rename &lt;name&gt;             — 自定义玩家阵营名称（1-16 字符）
  * </pre>
  */
 public class FactionCommand {
@@ -78,6 +79,17 @@ public class FactionCommand {
                                                 .executes(ctx -> resetStandings(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"))
+                                                )
+                                        )
+                                )
+                                // rename <name>
+                                .then(Commands.literal("rename")
+                                        .executes(ctx -> renameFaction(
+                                                ctx.getSource(), null))
+                                        .then(Commands.argument("name", StringArgumentType.greedyString())
+                                                .executes(ctx -> renameFaction(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "name"))
                                                 )
                                         )
                                 )
@@ -166,6 +178,40 @@ public class FactionCommand {
 
         source.sendSuccess(() -> Component.literal(
                 "§a已重置 " + target.getName().getString() + " 的所有阵营声望"), true);
+        return 1;
+    }
+
+    private static int renameFaction(CommandSourceStack source, String name) {
+        if (!(source.getEntity() instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("§c此命令只能由玩家执行"));
+            return 0;
+        }
+
+        if (name == null || name.isBlank()) {
+            var standings = FactionAttachments.getStandings(player);
+            standings.setPlayerFactionName(null);
+            FactionAttachments.syncToClient(player);
+            source.sendSuccess(() -> Component.literal("§a玩家阵营名称已重置为默认"), true);
+            return 1;
+        }
+
+        // 验证名称
+        String cleaned = name.replaceAll("§[0-9a-fk-or]", "").trim();
+        if (cleaned.isEmpty()) {
+            source.sendFailure(Component.literal("§c阵营名称不能为空"));
+            return 0;
+        }
+        if (cleaned.length() > 16) {
+            source.sendFailure(Component.literal("§c阵营名称不能超过 16 个字符（当前 " + cleaned.length() + " 字符）"));
+            return 0;
+        }
+
+        var standings = FactionAttachments.getStandings(player);
+        standings.setPlayerFactionName(cleaned);
+        FactionAttachments.syncToClient(player);
+
+        source.sendSuccess(() -> Component.literal(
+                "§a玩家阵营名称已设为：§e" + cleaned), true);
         return 1;
     }
 }

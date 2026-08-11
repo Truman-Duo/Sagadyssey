@@ -59,7 +59,24 @@ public class LowHpRetreatGoal extends Goal {
     @Override
     public void tick() {
         Player owner = npc.level().getPlayerByUUID(npc.getOwnerUUID());
-        if (owner != null) {
+        if (owner == null) return;
+
+        if (npc.isPassenger()) {
+            // 骑乘撤退：直接设置移动方向，让马跑
+            double dx = owner.getX() - npc.getX();
+            double dz = owner.getZ() - npc.getZ();
+            double dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist > 2.0) {
+                float targetYaw = (float) (Math.atan2(dz, dx) * 180.0 / Math.PI) - 90.0F;
+                npc.setYRot(targetYaw);
+                npc.yHeadRot = targetYaw;
+                npc.zza = 1.0F;
+                npc.xxa = 0.0F;
+            } else {
+                npc.zza = 0.0F;
+                npc.xxa = 0.0F;
+            }
+        } else {
             npc.getNavigation().moveTo(owner, 1.3D);
         }
 

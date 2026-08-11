@@ -1,10 +1,13 @@
 package com.jgeted.sagadyssey.npc.faction;
 
+import com.jgeted.sagadyssey.npc.entity.NpcBase;
 import com.jgeted.sagadyssey.npc.faction.network.FactionStandingsUpdatePayload;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import javax.annotation.Nullable;
 import java.util.*;
 
 /**
@@ -176,5 +179,67 @@ public final class StandingModifier {
 
     public static int getRippleCap() {
         return DEFAULT_RIPPLE_CAP;
+    }
+
+    /**
+     * 判定 source 实体是否应视 target 实体为敌。
+     * 任一方属于 player 阵营时，以其 owner 的 FactionStandings 代替直接阵营判定。
+     *
+     * @param source          判定发起方实体
+     * @param target          被判定实体
+     * @param sourceOwnerUuid source 的 owner（如果 source 是已招募 NPC）
+     * @param targetOwnerUuid target 的 owner（如果 target 是已招募 NPC）
+     * @return true 如果 source 应该攻击 target
+     */
+    public static boolean isHostileBetween(
+            LivingEntity source, LivingEntity target,
+            @Nullable UUID sourceOwnerUuid, @Nullable UUID targetOwnerUuid
+    ) {
+        // 获取 source 和 target 的阵营
+        Faction sourceFaction = (source instanceof NpcBase npc) ? npc.getFaction() : null;
+        Faction targetFaction = (target instanceof NpcBase npc) ? npc.getFaction() : null;
+
+        boolean sourceIsPlayer = sourceFaction != null && "sagadyssey:player".equals(sourceFaction.id());
+        boolean targetIsPlayer = targetFaction != null && "sagadyssey:player".equals(targetFaction.id());
+
+        // 情况1：双方都是 player 阵营 → v1.0 返回 false（玩家间 NPC 不互相敌对）
+        if (sourceIsPlayer && targetIsPlayer) {
+            return false;
+        }
+
+        // 情况2：仅 source 是 player 阵营 → 查 source.owner 对 target 阵营的声望
+        if (sourceIsPlayer) {
+            if (sourceOwnerUuid == null || targetFaction == null) return false;
+            ServerPlayer owner = getPlayerByUUID(sourceOwnerUuid);
+            if (owner == null) return false;
+            return FactionAttachments.getStandings(owner).isHostile(targetFaction);
+        }
+
+        // 情况3：仅 target 是 player 阵营 → 查 source 阵营 canBeHostile + target.owner 对 source 声望
+        if (targetIsPlayer) {
+            if (targetOwnerUuid == null || sourceFaction == null) return false;
+            if (!sourceFaction.canBeHostile()) return false;
+            ServerPlayer targetOwner = getPlayerByUUID(targetOwnerUuid);
+            if (targetOwner == null) return false;
+            return FactionAttachments.getStandings(targetOwner).isHostile(sourceFaction);
+        }
+
+        // 情况4：双方都是普通阵营 → 查关系矩阵
+        if (sourceFaction != null && targetFaction != null) {
+            FactionRelationMatrix matrix = FactionRelationMatrix.getInstance();
+            InterFactionRelation relation = matrix.getRelation(sourceFaction, targetFaction);
+            return relation == InterFactionRelation.ENEMY;
+        }
+
+        // 非 NpcBase 实体（原版生物等）：不通过阵营判定
+        return false;
+    }
+
+    /** 通过 UUID 获取在线玩家 */
+    @Nullable
+    private static ServerPlayer getPlayerByUUID(UUID uuid) {
+        var server = net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer();
+        if (server == null) return null;
+        return server.getPlayerList().getPlayer(uuid);
     }
 }
