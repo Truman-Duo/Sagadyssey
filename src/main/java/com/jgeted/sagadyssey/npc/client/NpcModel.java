@@ -6,6 +6,11 @@ import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.geom.ModelPart;
 import net.minecraft.client.model.geom.PartPose;
 import net.minecraft.client.model.geom.builders.*;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.item.CrossbowItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.UseAnim;
 
 /**
  * NPC 自定义模型 — 细手臂 + 全套 outer layer（hat/jacket/sleeves/pants）。
@@ -104,6 +109,44 @@ public class NpcModel extends HumanoidModel<NpcBase> {
                 PartPose.offset(-1.9F, 12.0F, 0.0F));
 
         return LayerDefinition.create(mesh, 64, 64);
+    }
+
+    // 1.21.1 的 HumanoidMobRenderer 不会设置手臂姿态（getArmPose 已从渲染器移入 Player 等实体类），
+    // 需自行在 setupAnim 之前赋值，否则 NPC 拉弓/持弩时手臂不抬起
+    @Override
+    public void prepareMobModel(NpcBase entity, float limbSwing, float limbSwingAmount, float partialTick) {
+        HumanoidModel.ArmPose mainPose = armPoseFor(entity, InteractionHand.MAIN_HAND);
+        HumanoidModel.ArmPose offPose = armPoseFor(entity, InteractionHand.OFF_HAND);
+        if (mainPose.isTwoHanded()) {
+            offPose = entity.getOffhandItem().isEmpty() ? HumanoidModel.ArmPose.EMPTY : HumanoidModel.ArmPose.ITEM;
+        }
+        if (entity.getMainArm() == HumanoidArm.RIGHT) {
+            this.rightArmPose = mainPose;
+            this.leftArmPose = offPose;
+        } else {
+            this.rightArmPose = offPose;
+            this.leftArmPose = mainPose;
+        }
+        super.prepareMobModel(entity, limbSwing, limbSwingAmount, partialTick);
+    }
+
+    private static HumanoidModel.ArmPose armPoseFor(NpcBase entity, InteractionHand hand) {
+        ItemStack stack = entity.getItemInHand(hand);
+        if (stack.isEmpty()) {
+            return HumanoidModel.ArmPose.EMPTY;
+        }
+        if (entity.getUsedItemHand() == hand && entity.getUseItemRemainingTicks() > 0) {
+            UseAnim useAnim = stack.getUseAnimation();
+            if (useAnim == UseAnim.BOW) {
+                return HumanoidModel.ArmPose.BOW_AND_ARROW;
+            }
+            if (useAnim == UseAnim.CROSSBOW) {
+                return HumanoidModel.ArmPose.CROSSBOW_CHARGE;
+            }
+        } else if (!entity.swinging && stack.getItem() instanceof CrossbowItem && CrossbowItem.isCharged(stack)) {
+            return HumanoidModel.ArmPose.CROSSBOW_HOLD;
+        }
+        return HumanoidModel.ArmPose.ITEM;
     }
 
     @Override

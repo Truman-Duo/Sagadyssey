@@ -1,5 +1,6 @@
 package com.jgeted.sagadyssey.npc.entity;
 
+import com.jgeted.sagadyssey.npc.ai.AiMutex;
 import com.jgeted.sagadyssey.npc.faction.Faction;
 import com.jgeted.sagadyssey.npc.faction.FactionAttachments;
 import com.jgeted.sagadyssey.npc.faction.FactionRegistry;
@@ -12,7 +13,9 @@ import com.jgeted.sagadyssey.npc.trade.NpcTradeOffer;
 import com.jgeted.sagadyssey.npc.trade.NpcTradeRegistry;
 import com.jgeted.sagadyssey.core.config.SagadysseyConfig;
 import com.jgeted.sagadyssey.Sagadyssey;
+import com.jgeted.sagadyssey.registry.ModItems;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -40,8 +43,14 @@ import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ArrowItem;
+import net.minecraft.world.item.AxeItem;
+import net.minecraft.world.item.BowItem;
+import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.SwordItem;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -102,6 +111,13 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
     /** 当前行为指令 */
     private NpcCommand command = NpcCommand.IDLE;
 
+    /** 框选中的工作范围第一角（未完成） */
+    private BlockPos workZoneCorner1 = null;
+    /** 工作范围最小角 */
+    private BlockPos workZoneMin = null;
+    /** 工作范围最大角 */
+    private BlockPos workZoneMax = null;
+
     /** 阵营（新系统：基于 FactionRegistry 的 Faction 引用） */
     private Faction faction = FactionRegistry.get("sagadyssey:wilderness");
 
@@ -131,6 +147,31 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
 
     /** 待上马标记：true 时 MountGoal 会导航 NPC 走向坐骑并骑上去 */
     private boolean pendingMount = false;
+
+    /** AI mutex 位标记集合，防止多个 AI goal 同时操控 NPC */
+    private final Set<AiMutex> activeMutexes = EnumSet.noneOf(AiMutex.class);
+
+    /** 敌对目标候选（由 faction 事件/hurt 写入，由 TargetSelector 消费） */
+    @Nullable
+    private LivingEntity hostileTargetCandidate = null;
+
+    /** 战斗目标选择 goal 引用（主人变更时刷新目标源） */
+    @Nullable
+    private com.jgeted.sagadyssey.npc.ai.NpcCombatGoal combatGoal = null;
+
+    /** 近战攻击 goal 引用（用于武器切换时动态替换） */
+    @Nullable
+    private MeleeAttackGoal meleeAttackGoal = null;
+
+    /** 远程攻击 goal（弓手模式时创建，近战模式时为 null） */
+    @Nullable
+    private com.jgeted.sagadyssey.npc.ai.NpcRangedAttackGoal rangedGoal = null;
+
+    /** 上次检测的手持武器（用于变化检测） */
+    private ItemStack lastCheckedWeapon = ItemStack.EMPTY;
+
+    /** 当前是否处于远程模式 */
+    private boolean isRangedMode = false;
 
     /** 9 格自定义背包 */
     private final SimpleContainer equipmentInventory = new SimpleContainer(9);
@@ -291,6 +332,21 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
         super.tick();
         if (this.level().isClientSide) return;
 
+        // === 武器变更检测（主手物品变化 → 切换近战/远程 AI） ===
+        ItemStack currentHeld = getMainHandItem();
+        if (!ItemStack.matches(currentHeld, lastCheckedWeapon)) {
+            com.jgeted.sagadyssey.npc.ai.NpcWeaponSwapHandler.onWeaponChanged(this, currentHeld);
+            lastCheckedWeapon = currentHeld.copy();
+        }
+
+        // === 弓箭手补箭自动切回远程（弹药放背包时不经过 setArrowSlot，需轮询兜底）===
+        if (!this.isRangedMode && this.profession == NpcProfession.ARCHER
+                && this.tickCount % 10 == 0) {
+            if (hasRangedWeaponAvailable() && hasAmmoAvailable()) {
+                ensureRangedMode();
+            }
+        }
+
         // === 自动上下马检测 ===
         if (this.tickCount % SagadysseyConfig.MOUNT_CHECK_INTERVAL.get() == 0) {
             if (this.isPassenger()) {
@@ -366,10 +422,13 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
                 // === 骑马战斗（先判断，后移动） ===
                 boolean inAttackWindow = false;
                 if (this.getTarget() != null && this.getTarget().isAlive()) {
-                    boolean isCombatProf = this.profession == NpcProfession.WARRIOR
-                            || this.profession == NpcProfession.HEAVY;
+                    // 近战能力：战士/重装，或弓箭手（弹药耗尽切近战兜底时也需骑马挥砍）
+                    boolean meleeCapable = this.profession == NpcProfession.WARRIOR
+                            || this.profession == NpcProfession.HEAVY
+                            || this.profession == NpcProfession.ARCHER;
 
-                    if (isCombatProf) {
+                    // 远程模式下射击由 NpcRangedAttackGoal 处理，这里不挥砍；近战兜底(!isRangedMode)才贴脸挥剑
+                    if (meleeCapable && !this.isRangedMode) {
                         // 冷却递减
                         if (this.mountedAttackCooldown > 0) {
                             this.mountedAttackCooldown--;
@@ -386,8 +445,8 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
                             this.mountedAttackCooldown = 12;
                             inAttackWindow = true;
                         }
-                    } else if (this.profession == NpcProfession.ARCHER) {
-                        // TODO: 骑马射箭
+                    } else if (this.isRangedMode) {
+                        // 骑马射箭：射击交给 NpcRangedAttackGoal，走位见下方移动段
                     } else {
                         // 非战斗职业：下马战斗
                         this.dismountToBind();
@@ -416,17 +475,29 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
 
                 if (moveTarget != null) {
                     double distSq = this.distanceToSqr(moveTarget);
-                    // 战斗时靠更近（攻击范围 3 格），跟随/巡逻保持距离
-                    double stopDistSq;
+                    // 移动方向：1=逼近, 0=保持距离停下, -1=后撤拉开
+                    int moveDir;
                     if (this.getTarget() != null) {
-                        stopDistSq = 2.25;  // sqrt(2.25)=1.5 格，贴身上去砍
+                        if (this.isRangedMode) {
+                            // 骑马弓箭手风筝：保持 8~14 格输出距离（可调）
+                            if (distSq > 14.0 * 14.0) {
+                                moveDir = 1;   // 太远，逼近
+                            } else if (distSq < 8.0 * 8.0) {
+                                moveDir = -1;  // 太近，后撤拉开
+                            } else {
+                                moveDir = 0;   // 射程带内，停下射击
+                            }
+                        } else {
+                            // 近战贴身上去砍（1.5 格）——弓箭手弹药耗尽切近战兜底时也走这里
+                            moveDir = distSq > 2.25 ? 1 : 0;
+                        }
                     } else if (this.command == NpcCommand.FOLLOW) {
-                        stopDistSq = 12.0;
+                        moveDir = distSq > 12.0 ? 1 : 0;
                     } else {
-                        stopDistSq = 6.0;
+                        moveDir = distSq > 6.0 ? 1 : 0;
                     }
-                    if (distSq > stopDistSq) {
-                        // 面向目标
+                    if (moveDir != 0) {
+                        // 面向目标（后撤时也保持面向，边退边射）
                         Vec3 toTarget = moveTarget.subtract(this.position());
                         double horizDist = Math.sqrt(toTarget.x * toTarget.x + toTarget.z * toTarget.z);
                         float yaw = (float) (Math.atan2(toTarget.z, toTarget.x) * 180.0 / Math.PI) - 90.0F;
@@ -438,11 +509,11 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
                             // 目标在正上/下方，水平不动
                             horse.setDeltaMovement(0, horse.getDeltaMovement().y, 0);
                         } else {
-                            // 直接设置水平速度（马的属性速度 × 1.5 加成）
+                            // 直接设置水平速度（马的属性速度 × 1.5 加成），moveDir=-1 时反向
                             float horseSpeed = (float) horse.getAttributeValue(Attributes.MOVEMENT_SPEED);
                             float moveSpeed = horseSpeed * 1.5F;
-                            double dx = (toTarget.x / horizDist) * moveSpeed;
-                            double dz = (toTarget.z / horizDist) * moveSpeed;
+                            double dx = (toTarget.x / horizDist) * moveSpeed * moveDir;
+                            double dz = (toTarget.z / horizDist) * moveSpeed * moveDir;
 
                             // Y 轴：游泳上浮 / 跳跃障碍 / 正常重力
                             double dy = horse.getDeltaMovement().y;
@@ -509,6 +580,55 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
     public NpcCommand getCommand() { return command; }
     public void setCommand(NpcCommand command) { this.command = command; }
 
+    /** 标记工作范围第一角（玩家脚下） */
+    public void markWorkZoneCorner1(BlockPos pos) {
+        this.workZoneCorner1 = pos.immutable();
+    }
+
+    /** 标记第二角，生成矩形范围 */
+    public void markWorkZoneCorner2(BlockPos pos) {
+        if (this.workZoneCorner1 == null) return;
+        BlockPos a = this.workZoneCorner1;
+        this.workZoneMin = new BlockPos(
+                Math.min(a.getX(), pos.getX()), Math.min(a.getY(), pos.getY()), Math.min(a.getZ(), pos.getZ()));
+        this.workZoneMax = new BlockPos(
+                Math.max(a.getX(), pos.getX()), Math.max(a.getY(), pos.getY()), Math.max(a.getZ(), pos.getZ()));
+        this.workZoneCorner1 = null;
+    }
+
+    public boolean hasWorkZone() {
+        return this.workZoneMin != null && this.workZoneMax != null;
+    }
+
+    public void clearWorkZone() {
+        this.workZoneCorner1 = null;
+        this.workZoneMin = null;
+        this.workZoneMax = null;
+    }
+
+    /** 直接设置工作范围（两个角自动归一化为 min/max） */
+    public void setWorkZone(BlockPos a, BlockPos b) {
+        this.workZoneMin = new BlockPos(
+                Math.min(a.getX(), b.getX()), Math.min(a.getY(), b.getY()), Math.min(a.getZ(), b.getZ()));
+        this.workZoneMax = new BlockPos(
+                Math.max(a.getX(), b.getX()), Math.max(a.getY(), b.getY()), Math.max(a.getZ(), b.getZ()));
+        this.workZoneCorner1 = null;
+    }
+
+    /** 是否允许在该位置作业（未设范围则全允许） */
+    public boolean isWorkAllowedAt(BlockPos pos) {
+        return !hasWorkZone() || isInWorkZone(pos);
+    }
+
+    public BlockPos getWorkZoneMin() { return workZoneMin; }
+    public BlockPos getWorkZoneMax() { return workZoneMax; }
+
+    private boolean isInWorkZone(BlockPos pos) {
+        return pos.getX() >= workZoneMin.getX() && pos.getX() <= workZoneMax.getX()
+                && pos.getY() >= workZoneMin.getY() && pos.getY() <= workZoneMax.getY()
+                && pos.getZ() >= workZoneMin.getZ() && pos.getZ() <= workZoneMax.getZ();
+    }
+
     public Faction getFaction() { return faction; }
     public void setFaction(Faction faction) { this.faction = faction; }
 
@@ -552,6 +672,8 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
             }
             // 切换到 player 阵营
             this.faction = FactionRegistry.getPlayerFaction();
+            // 刷新战斗目标源（启用主人保护级）
+            if (combatGoal != null) combatGoal.refreshSources();
         }
     }
 
@@ -640,6 +762,193 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
     public void clearPendingMount() { this.pendingMount = false; }
     public boolean isPendingMount() { return pendingMount; }
 
+    // === AI Mutex 管理 ===
+
+    /**
+     * 申请 mutex 位。所有位都空闲时申请成功并占用，否则返回 false。
+     */
+    public boolean requestMutex(AiMutex... mutexes) {
+        for (AiMutex m : mutexes) {
+            if (activeMutexes.contains(m)) {
+                Sagadyssey.LOGGER.debug("[MUTEX] {} requestMutex {} DENIED (held: {})",
+                        getNpcName(), Arrays.toString(mutexes), activeMutexes);
+                return false;
+            }
+        }
+        Collections.addAll(activeMutexes, mutexes);
+        Sagadyssey.LOGGER.debug("[MUTEX] {} requestMutex {} GRANTED (held: {})",
+                getNpcName(), Arrays.toString(mutexes), activeMutexes);
+        return true;
+    }
+
+    /** 释放 mutex 位 */
+    public void releaseMutex(AiMutex... mutexes) {
+        for (AiMutex m : mutexes) activeMutexes.remove(m);
+        Sagadyssey.LOGGER.debug("[MUTEX] {} releaseMutex {} (held: {})",
+                getNpcName(), Arrays.toString(mutexes), activeMutexes);
+    }
+
+    // === 武器模式切换 ===
+
+    /** 切换到近战模式：移除远程 goal，注册近战 goal，并把主手的弓换成背包里的剑/斧 */
+    public void ensureMeleeMode() {
+        if (this.level().isClientSide) return;
+        if (!isRangedMode) return; // 已经是近战模式
+
+        if (rangedGoal != null) {
+            this.goalSelector.removeGoal(rangedGoal);
+            rangedGoal = null;
+        }
+        if (meleeAttackGoal != null) {
+            this.goalSelector.addGoal(1, meleeAttackGoal);
+        }
+        isRangedMode = false;
+
+        // 自动换近战武器：主手仍是弓/弩时，若背包有剑/斧则交换
+        // （弹药耗尽切近战兜底时不再拿弓贴脸）
+        equipBestMeleeWeapon();
+    }
+
+    /** 切换到远程模式：移除近战 goal，注册远程 goal，并把主手武器换回弓/弩 */
+    public void ensureRangedMode() {
+        if (this.level().isClientSide) return;
+        if (isRangedMode) return; // 已经是远程模式
+
+        if (meleeAttackGoal != null) {
+            this.goalSelector.removeGoal(meleeAttackGoal);
+        }
+        if (rangedGoal == null) {
+            rangedGoal = new com.jgeted.sagadyssey.npc.ai.NpcRangedAttackGoal(this, 1.0D, 20, 16.0F);
+        }
+        this.goalSelector.addGoal(1, rangedGoal);
+        isRangedMode = true;
+
+        // 自动换远程武器：主手是剑/斧或空手时，从背包/弓槽找回弓
+        // （补箭切回远程时重新拿弓）
+        equipBestRangedWeapon();
+    }
+
+    // === 武器自动装备辅助 ===
+
+    /** 是否是远程武器（弓/弩） */
+    private static boolean isRangedWeaponItem(ItemStack stack) {
+        return !stack.isEmpty()
+                && (stack.getItem() instanceof BowItem || stack.getItem() instanceof CrossbowItem);
+    }
+
+    /** 是否是近战武器（剑/斧） */
+    private static boolean isMeleeWeaponItem(ItemStack stack) {
+        return !stack.isEmpty()
+                && (stack.getItem() instanceof SwordItem || stack.getItem() instanceof AxeItem);
+    }
+
+    /** 在背包(9格)中查找近战武器，返回槽位下标，无则 -1 */
+    private int findMeleeWeaponInBag() {
+        for (int i = 0; i < equipmentInventory.getContainerSize(); i++) {
+            if (isMeleeWeaponItem(equipmentInventory.getItem(i))) return i;
+        }
+        return -1;
+    }
+
+    /** 在背包(9格)中查找远程武器，返回槽位下标，无则 -1 */
+    private int findRangedWeaponInBag() {
+        for (int i = 0; i < equipmentInventory.getContainerSize(); i++) {
+            if (isRangedWeaponItem(equipmentInventory.getItem(i))) return i;
+        }
+        return -1;
+    }
+
+    /** 是否有远程武器可用（主/副手、弓槽或背包） */
+    private boolean hasRangedWeaponAvailable() {
+        return isRangedWeaponItem(getMainHandItem())
+                || isRangedWeaponItem(getOffhandItem())
+                || isRangedWeaponItem(bowSlot)
+                || findRangedWeaponInBag() >= 0;
+    }
+
+    /** 是否有箭可用（箭槽或背包） */
+    private boolean hasAmmoAvailable() {
+        if (!arrowSlot.isEmpty()) return true;
+        for (int i = 0; i < equipmentInventory.getContainerSize(); i++) {
+            if (equipmentInventory.getItem(i).getItem() instanceof ArrowItem) return true;
+        }
+        return false;
+    }
+
+    /** 把物品放进背包：优先堆叠到同类物品，其次空位；放不下返回 false */
+    public boolean addToBag(ItemStack stack) {
+        if (stack.isEmpty()) return true;
+        // 先尝试堆叠到已有同类物品
+        for (int i = 0; i < equipmentInventory.getContainerSize(); i++) {
+            ItemStack slot = equipmentInventory.getItem(i);
+            if (ItemStack.isSameItemSameComponents(slot, stack)) {
+                int move = Math.min(stack.getCount(), slot.getMaxStackSize() - slot.getCount());
+                if (move > 0) {
+                    slot.grow(move);
+                    stack.shrink(move);
+                    if (stack.isEmpty()) return true;
+                }
+            }
+        }
+        // 再找空位
+        for (int i = 0; i < equipmentInventory.getContainerSize(); i++) {
+            if (equipmentInventory.getItem(i).isEmpty()) {
+                equipmentInventory.setItem(i, stack.copy());
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 主手与背包某格交换物品（弓↔剑互换） */
+    private void swapMainHandWithBag(int bagSlot) {
+        ItemStack held = getMainHandItem();
+        ItemStack bagItem = equipmentInventory.getItem(bagSlot).copy();
+        equipmentInventory.setItem(bagSlot, held.copy());
+        setItemSlot(EquipmentSlot.MAINHAND, bagItem);
+    }
+
+    /** 进入近战模式时：主手是弓就把剑/斧换上来（弓放回原剑格） */
+    private void equipBestMeleeWeapon() {
+        if (isRangedWeaponItem(getMainHandItem())) {
+            int slot = findMeleeWeaponInBag();
+            if (slot >= 0) {
+                swapMainHandWithBag(slot);
+            }
+        }
+    }
+
+    /** 进入远程模式时：主手不是弓就从背包/弓槽找回弓（近战武器放回背包） */
+    private void equipBestRangedWeapon() {
+        ItemStack held = getMainHandItem();
+        if (isRangedWeaponItem(held)) return; // 已经拿着弓
+
+        int bagSlot = findRangedWeaponInBag();
+        if (bagSlot >= 0) {
+            // 背包里有弓 → 主手与背包格交换
+            swapMainHandWithBag(bagSlot);
+            return;
+        }
+        // 背包无弓，退而求其次：弓槽
+        if (isRangedWeaponItem(bowSlot)) {
+            ItemStack bow = bowSlot.copy();
+            bowSlot = ItemStack.EMPTY;
+            if (!held.isEmpty() && !addToBag(held)) {
+                this.spawnAtLocation(held.copy()); // 背包满则掉落，避免复制
+            }
+            setItemSlot(EquipmentSlot.MAINHAND, bow);
+        }
+    }
+
+    // === 敌对目标候选（替代 hurt() 中直接 setTarget） ===
+
+    @Nullable
+    public LivingEntity getHostileTargetCandidate() { return hostileTargetCandidate; }
+
+    public void setHostileTargetCandidate(@Nullable LivingEntity target) {
+        this.hostileTargetCandidate = target;
+    }
+
     /** 判断坐骑当前是否被拴绳拴住 */
     public boolean isMountLeashed() {
         if (!hasMount()) return false;
@@ -666,7 +975,7 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
                 || profession == NpcProfession.FARMER
                 || profession == NpcProfession.BLACKSMITH;
         if (isWorkingProf && this.getTarget() == null) {
-            if (this.command == NpcCommand.IDLE || this.command == NpcCommand.STAY) {
+            if (this.command == NpcCommand.IDLE || this.command == NpcCommand.STAY || this.command == NpcCommand.WORK) {
                 return true;
             }
         }
@@ -830,7 +1139,21 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
     public void setBowSlot(ItemStack stack) { this.bowSlot = stack; }
 
     public ItemStack getArrowSlot() { return arrowSlot; }
-    public void setArrowSlot(ItemStack stack) { this.arrowSlot = stack; }
+
+    public void setArrowSlot(ItemStack stack) {
+        this.arrowSlot = stack;
+        // 箭矢补充后，若主/副手、弓槽或背包里有弓，自动切回远程模式
+        // （修复弹药耗尽切近战后，补箭不再射箭的问题；弓可能在背包里）
+        if (!stack.isEmpty() && !this.level().isClientSide) {
+            boolean hasRangedWeapon = isRangedWeaponItem(getMainHandItem())
+                    || isRangedWeaponItem(getOffhandItem())
+                    || isRangedWeaponItem(bowSlot)
+                    || findRangedWeaponInBag() >= 0;
+            if (hasRangedWeapon) {
+                ensureRangedMode();
+            }
+        }
+    }
 
     /** 首次分配职业时给予初始装备 */
     public void applyInitialEquipment(NpcProfession profession) {
@@ -865,7 +1188,10 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
             case FARMER -> {
                 setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.STONE_HOE));
                 equipmentInventory.setItem(0, new ItemStack(Items.WHEAT_SEEDS, 4));
-                equipmentInventory.setItem(1, new ItemStack(Items.BREAD, 2));
+                equipmentInventory.setItem(1, new ItemStack(Items.CARROT, 4));
+                equipmentInventory.setItem(2, new ItemStack(Items.POTATO, 4));
+                equipmentInventory.setItem(3, new ItemStack(Items.BEETROOT_SEEDS, 4));
+                equipmentInventory.setItem(4, new ItemStack(Items.BREAD, 2));
             }
             case BARD -> {
                 equipmentInventory.setItem(0, new ItemStack(Items.BREAD, 4));
@@ -913,14 +1239,16 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         this.goalSelector.addGoal(0, new com.jgeted.sagadyssey.npc.ai.LowHpRetreatGoal(this));
         this.goalSelector.addGoal(1, new com.jgeted.sagadyssey.npc.ai.StayGoal(this));
-        this.goalSelector.addGoal(1, new MeleeAttackGoal(this, 1.0D, true));
+        this.goalSelector.addGoal(1, meleeAttackGoal = new MeleeAttackGoal(this, 1.0D, true));
         this.goalSelector.addGoal(1, new com.jgeted.sagadyssey.npc.ai.MountGoal(this));
         this.goalSelector.addGoal(2, new com.jgeted.sagadyssey.npc.ai.FollowOwnerGoal(this, 1.0D, 3.0F, 64.0F));
+        this.goalSelector.addGoal(2, new com.jgeted.sagadyssey.npc.ai.FarmerWorkGoal(this));
+        this.goalSelector.addGoal(2, new com.jgeted.sagadyssey.npc.ai.WorkerWorkGoal(this));
         this.goalSelector.addGoal(3, new RandomStrollGoal(this, 1.0D));
         this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0F));
         this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));
-        this.targetSelector.addGoal(0, new com.jgeted.sagadyssey.npc.ai.ProtectOwnerGoal(this));
-        this.targetSelector.addGoal(1, new com.jgeted.sagadyssey.npc.ai.NpcHostileGoal(this));
+        this.goalSelector.addGoal(6, new com.jgeted.sagadyssey.npc.ai.NpcOpenDoorGoal(this));
+        this.targetSelector.addGoal(0, combatGoal = new com.jgeted.sagadyssey.npc.ai.NpcCombatGoal(this));
     }
 
     /** 属性定义（注册实体时调用） */
@@ -942,9 +1270,9 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
                 // 旧系统兼容：仅对 old-faction-based 逻辑保留
             }
         }
-        // 被非盟友攻击时立即反击
+        // 被非盟友攻击时记录候选目标（由 TargetSelector 优先级链消费）
         if (source.getEntity() instanceof LivingEntity attacker && attacker.isAlive() && !isAlliedTo(attacker)) {
-            this.setTarget(attacker);
+            this.hostileTargetCandidate = attacker;
         }
         return super.hurt(source, amount);
     }
@@ -953,8 +1281,38 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
 
     @Override
     public InteractionResult mobInteract(Player player, InteractionHand hand) {
-        // === 栓绳交互 ===
         var stack = player.getItemInHand(hand);
+
+        // === 指挥杖：设置 / 清除工作范围 ===
+        if (stack.is(ModItems.NPC_COMMAND_WAND.get())) {
+            if (player.level().isClientSide) {
+                // 客户端不打开命令 GUI（不发 request_stats），交给服务端处理
+                return InteractionResult.SUCCESS;
+            }
+            if (!isOwnedBy(player.getUUID())) {
+                player.displayClientMessage(Component.literal("§c这个 NPC 不属于你"), true);
+                return InteractionResult.SUCCESS;
+            }
+            CompoundTag tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+            if (player.isShiftKeyDown()) {
+                clearWorkZone();
+                player.displayClientMessage(Component.literal("§a已清除 " + getNpcName() + " 的工作范围"), true);
+            } else if (tag.contains("Corner1") && tag.contains("Corner2")) {
+                int[] a = tag.getIntArray("Corner1");
+                int[] b = tag.getIntArray("Corner2");
+                setWorkZone(new BlockPos(a[0], a[1], a[2]), new BlockPos(b[0], b[1], b[2]));
+                tag.remove("Corner1");
+                tag.remove("Corner2");
+                CustomData.set(DataComponents.CUSTOM_DATA, stack, tag);
+                player.displayClientMessage(Component.literal("§a已设置 " + getNpcName() + " 的工作范围："
+                        + getWorkZoneMin().toShortString() + " → " + getWorkZoneMax().toShortString()), true);
+            } else {
+                player.displayClientMessage(Component.literal("§e先用指挥杖右键地面标记两个角，再右键 NPC"), true);
+            }
+            return InteractionResult.SUCCESS;
+        }
+
+        // === 栓绳交互 ===
         if (stack.is(Items.LEAD)) {
             // 检测玩家是否在牵马
             Leashable leashedHorse = null;
@@ -1030,6 +1388,10 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
         tag.putInt("Moral", this.moral);
         tag.putInt("RecruitmentCost", this.recruitmentCost);
         tag.putString("NpcCommand", this.command.name());
+        if (this.workZoneMin != null && this.workZoneMax != null) {
+            tag.putIntArray("WorkZoneMin", new int[]{workZoneMin.getX(), workZoneMin.getY(), workZoneMin.getZ()});
+            tag.putIntArray("WorkZoneMax", new int[]{workZoneMax.getX(), workZoneMax.getY(), workZoneMax.getZ()});
+        }
         tag.putString("Faction", this.faction != null ? this.faction.id() : "sagadyssey:wilderness");
         if (this.originalFaction != null) {
             tag.putString("OriginalFaction", this.originalFaction);
@@ -1136,6 +1498,14 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
                 this.command = NpcCommand.IDLE;
             }
         }
+        if (tag.contains("WorkZoneMin") && tag.contains("WorkZoneMax")) {
+            int[] min = tag.getIntArray("WorkZoneMin");
+            int[] max = tag.getIntArray("WorkZoneMax");
+            if (min.length == 3 && max.length == 3) {
+                this.workZoneMin = new BlockPos(min[0], min[1], min[2]);
+                this.workZoneMax = new BlockPos(max[0], max[1], max[2]);
+            }
+        }
         if (tag.contains("Faction")) {
             try {
                 String factionId = tag.getString("Faction");
@@ -1199,6 +1569,15 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
                 int resultMax = entry.getInt("ResultMax");
                 int minLevel = entry.getInt("MinLevel");
                 this.activeTrades.add(new NpcTradeOffer(costItem, costMin, costMax, resultItem, resultMin, resultMax, minLevel));
+            }
+        }
+
+        // 旧存档/数据包未加载兜底：faction 不应为 null（field 初始化时 registry 可能未就绪）
+        if (this.faction == null) {
+            this.faction = FactionRegistry.get("sagadyssey:wilderness");
+            if (this.faction == null) {
+                // registry 彻底未加载（极端时序），player 阵营有硬编码兜底，永不返回 null
+                this.faction = FactionRegistry.getPlayerFaction();
             }
         }
 

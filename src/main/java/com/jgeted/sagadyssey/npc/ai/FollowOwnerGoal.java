@@ -72,6 +72,8 @@ public class FollowOwnerGoal extends Goal {
             return false;
         }
 
+        if (!npc.requestMutex(AiMutex.MOVE)) return false;
+
         this.owner = player;
         return true;
     }
@@ -109,6 +111,7 @@ public class FollowOwnerGoal extends Goal {
         owner = null;
         navigation.stop();
         npc.setPathfindingMalus(PathType.WATER, -1.0F);
+        npc.releaseMutex(AiMutex.MOVE);
     }
 
     @Override

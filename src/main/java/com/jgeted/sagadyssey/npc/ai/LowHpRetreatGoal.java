@@ -34,8 +34,13 @@ public class LowHpRetreatGoal extends Goal {
         if (hpRatio > RETREAT_THRESHOLD) return false;
 
         Player owner = npc.level().getPlayerByUUID(npc.getOwnerUUID());
-        return owner != null && owner.isAlive()
-                && npc.distanceToSqr(owner) < OWNER_TOO_FAR;
+        if (owner == null || !owner.isAlive()
+                || npc.distanceToSqr(owner) >= OWNER_TOO_FAR) {
+            return false;
+        }
+
+        if (!npc.requestMutex(AiMutex.MOVE)) return false;
+        return true;
     }
 
     @Override
@@ -89,5 +94,6 @@ public class LowHpRetreatGoal extends Goal {
     @Override
     public void stop() {
         npc.getNavigation().stop();
+        npc.releaseMutex(AiMutex.MOVE);
     }
 }

@@ -9,5 +9,7 @@ public enum NpcCommand {
     /** 跟随主人，保持固定距离 */
     FOLLOW,
     /** 原地待命，不移动 */
-    STAY
+    STAY,
+    /** 就地工作（务农/伐木挖矿，按职业） */
+    WORK
 }

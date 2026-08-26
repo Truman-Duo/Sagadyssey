@@ -26,12 +26,19 @@ public class StayGoal extends Goal {
                 && npc.distanceToSqr(npc.getTarget()) < 36.0D) {
             return false;
         }
+        if (!npc.requestMutex(AiMutex.MOVE)) return false;
         return true;
     }
 
     @Override
     public boolean canContinueToUse() {
-        return canUse();
+        if (!npc.isAlive() || npc.getCommand() != NpcCommand.STAY) return false;
+        // 战斗 goal 激活时释放 MOVE 控制权
+        if (npc.getTarget() != null && npc.getTarget().isAlive()) {
+            npc.releaseMutex(AiMutex.MOVE);
+            return false;
+        }
+        return true;
     }
 
     @Override
@@ -44,5 +51,10 @@ public class StayGoal extends Goal {
         npc.setDeltaMovement(0.0D, npc.getDeltaMovement().y, 0.0D);
         npc.xxa = 0.0F;
         npc.zza = 0.0F;
+    }
+
+    @Override
+    public void stop() {
+        npc.releaseMutex(AiMutex.MOVE);
     }
 }

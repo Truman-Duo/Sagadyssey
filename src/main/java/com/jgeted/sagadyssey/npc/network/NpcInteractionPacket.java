@@ -5,6 +5,7 @@ import com.jgeted.sagadyssey.npc.container.NpcEquipMenuProvider;
 import com.jgeted.sagadyssey.npc.entity.NpcBase;
 import com.jgeted.sagadyssey.npc.entity.NpcCommand;
 import com.jgeted.sagadyssey.npc.faction.NpcFaction;
+import com.jgeted.sagadyssey.npc.profession.NpcProfession;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
@@ -27,6 +28,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  *   "recruit"        — 确认招募（在招募界面点击 Hire 按钮）
  *   "follow"         — 命令 NPC 跟随
  *   "stay"           — 命令 NPC 原地待命
+ *   "work"           — 命令 NPC 开始工作（务农/伐木挖矿，按职业）
  */
 public record NpcInteractionPacket(int npcId, String action) implements CustomPacketPayload {
 
@@ -75,6 +77,7 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
                 case "recruit" -> handleRecruit(player, npc);
                 case "follow" -> handleCommand(player, npc, "follow");
                 case "stay" -> handleCommand(player, npc, "stay");
+                case "work" -> handleCommand(player, npc, "work");
                 case "open_equip" -> handleOpenEquip(player, npc);
                 case "unbind_mount" -> handleUnbindMount(player, npc);
                 case "request_mounts" -> handleRequestMounts(player, npc);
@@ -222,6 +225,14 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
                 npc.setCommand(NpcCommand.STAY);
                 player.displayClientMessage(
                         Component.literal("§a已命令 " + npcName + " 原地待命"), true);
+            }
+            case "work" -> {
+                if (npc.getProfession() != NpcProfession.FARMER && npc.getProfession() != NpcProfession.WORKER) {
+                    player.displayClientMessage(Component.literal("§e这个职业不会工作"), true);
+                    return;
+                }
+                npc.setCommand(NpcCommand.WORK);
+                player.displayClientMessage(Component.literal("§a已命令 " + npcName + " 开始工作"), true);
             }
         }
     }

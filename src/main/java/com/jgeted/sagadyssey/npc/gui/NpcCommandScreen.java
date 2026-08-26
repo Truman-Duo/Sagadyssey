@@ -2,6 +2,7 @@ package com.jgeted.sagadyssey.npc.gui;
 
 import com.jgeted.sagadyssey.npc.network.NpcInteractionPacket;
 import com.jgeted.sagadyssey.npc.network.NpcStatsPayload;
+import com.jgeted.sagadyssey.npc.profession.NpcProfession;
 import com.jgeted.sagadyssey.npc.trade.NpcTradeOffer;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -89,14 +90,35 @@ public class NpcCommandScreen extends Screen {
         int btnY1 = panelTop + 110;
         int btnY2 = panelTop + 138;
 
+        // 第一行：跟随 / 工作 / 待命（三按钮）
+        int workBtnW = 48;
+        int btn2X = leftX + workBtnW + 6;
+        int btn3X = btn2X + workBtnW + 6;
+
         addRenderableWidget(Button.builder(
                 Component.literal("跟随我" + (commandName.equals("FOLLOW") ? " ✓" : "")),
                 btn -> {
                     PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "follow"));
                     this.onClose();
                 })
-                .bounds(leftX, btnY1, btnW, 20)
+                .bounds(leftX, btnY1, workBtnW, 20)
                 .build());
+
+        // 工作按钮：农民→务农，工人→干活，其余职业置灰
+        NpcProfession prof = NpcProfession.fromDisplayName(professionName);
+        boolean canWork = prof == NpcProfession.FARMER || prof == NpcProfession.WORKER;
+        String workLabel = prof == NpcProfession.FARMER ? "务农"
+                : prof == NpcProfession.WORKER ? "干活" : "工作";
+        Button workBtn = Button.builder(
+                Component.literal(workLabel + (commandName.equals("WORK") ? " ✓" : "")),
+                btn -> {
+                    PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "work"));
+                    this.onClose();
+                })
+                .bounds(btn2X, btnY1, workBtnW, 20)
+                .build();
+        workBtn.active = canWork; // 非工作职业置灰
+        addRenderableWidget(workBtn);
 
         addRenderableWidget(Button.builder(
                 Component.literal("原地待命" + (commandName.equals("STAY") ? " ✓" : "")),
@@ -104,7 +126,7 @@ public class NpcCommandScreen extends Screen {
                     PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "stay"));
                     this.onClose();
                 })
-                .bounds(rightX, btnY1, btnW, 20)
+                .bounds(btn3X, btnY1, workBtnW, 20)
                 .build());
 
         addRenderableWidget(Button.builder(
