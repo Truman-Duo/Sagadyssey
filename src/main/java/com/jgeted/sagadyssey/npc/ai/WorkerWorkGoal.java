@@ -4,18 +4,26 @@ import com.jgeted.sagadyssey.npc.entity.NpcBase;
 import com.jgeted.sagadyssey.npc.entity.NpcCommand;
 import com.jgeted.sagadyssey.npc.profession.NpcProfession;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 工人工作 AI：在 WORK 命令下自动砍树、挖矿。
@@ -25,15 +33,31 @@ import java.util.List;
 public class WorkerWorkGoal extends Goal {
 
     private static final int SEARCH_RADIUS = 20;
-    private static final double WORK_REACH_SQ = 9.0;
+    private static final double WORK_REACH_SQ = 20.25; // 以眼睛为起点，4.5 格工具触及距离
+    private static final double STAND_REACHED_SQ = 2.25;
+    private static final long UNREACHABLE_COOLDOWN_TICKS = 600L;
     private static final int MAX_TREE_HEIGHT = 20; // 整列砍伐的最大树干高度
     private static final int MAX_LEAF_CLEAR = 24;  // 一次最多清多少片树叶
 
     private final NpcBase npc;
     private BlockPos workPos;
+    private BlockPos workStandPos;
+    private BlockPos workApproachPos;
+    private BlockPos workScaffoldPos;
+    private Block placedScaffoldBlock;
+    private boolean scaffoldBuilt;
     private int actionCooldown;
     private int stuckTicks;
     private BlockPos explorePos; // 找不到工作时随机游荡的目标
+    private final Map<BlockPos, Long> unreachableUntil = new HashMap<>();
+
+    /** 方块目标和 NPC 实际应该走到的作业站位必须分开。 */
+    private record WorkTarget(BlockPos blockPos, BlockPos standPos,
+                              BlockPos scaffoldPos, BlockPos approachPos) {
+        private WorkTarget(BlockPos blockPos, BlockPos standPos) {
+            this(blockPos, standPos, null, null);
+        }
+    }
 
     public WorkerWorkGoal(NpcBase npc) {
         this.npc = npc;
@@ -51,10 +75,11 @@ public class WorkerWorkGoal extends Goal {
         // 奇数 id 的 NPC 用 tickCount%20==0（偶数 tick）永远轮询不到
         if ((npc.tickCount - npc.getId()) % 20 != 0) return false;
 
-        BlockPos found = findWork();
+        clearExpiredUnreachableTargets();
+        WorkTarget found = findWork();
         if (found != null) {
             if (!npc.requestMutex(AiMutex.MOVE)) return false;
-            this.workPos = found;
+            applyWorkTarget(found);
             this.explorePos = null;
             return true;
         }
@@ -78,8 +103,10 @@ public class WorkerWorkGoal extends Goal {
     public void start() {
         actionCooldown = 0;
         stuckTicks = 0;
+        scaffoldBuilt = false;
+        placedScaffoldBlock = null;
         if (workPos != null) {
-            npc.getNavigation().moveTo(workPos.getX() + 0.5, workPos.getY(), workPos.getZ() + 0.5, 1.0);
+            moveToNextWorkPosition();
         } else if (explorePos != null) {
             npc.getNavigation().moveTo(explorePos.getX() + 0.5, explorePos.getY(), explorePos.getZ() + 0.5, 1.0);
         }
@@ -87,7 +114,13 @@ public class WorkerWorkGoal extends Goal {
 
     @Override
     public void stop() {
+        recoverScaffold();
         workPos = null;
+        workStandPos = null;
+        workApproachPos = null;
+        workScaffoldPos = null;
+        placedScaffoldBlock = null;
+        scaffoldBuilt = false;
         explorePos = null;
         npc.releaseMutex(AiMutex.MOVE);
     }
@@ -103,13 +136,21 @@ public class WorkerWorkGoal extends Goal {
 
     /** 走向工作点并作业 */
     private void tickWork() {
+        if (workScaffoldPos != null && !scaffoldBuilt) {
+            tickBuildScaffold();
+            return;
+        }
+
         npc.getLookControl().setLookAt(workPos.getX() + 0.5, workPos.getY(), workPos.getZ() + 0.5);
-        double distSq = npc.distanceToSqr(workPos.getX() + 0.5, workPos.getY(), workPos.getZ() + 0.5);
-        if (distSq <= WORK_REACH_SQ) {
+        double standDistSq = npc.distanceToSqr(
+                workStandPos.getX() + 0.5, workStandPos.getY(), workStandPos.getZ() + 0.5);
+        double reachDistSq = npc.getEyePosition().distanceToSqr(Vec3.atCenterOf(workPos));
+        if (standDistSq <= STAND_REACHED_SQ && reachDistSq <= WORK_REACH_SQ) {
             npc.getNavigation().stop();
             if (--actionCooldown <= 0) {
                 actionCooldown = 20;
                 mineBlock();
+                recoverScaffold();
                 workPos = null;
             }
         } else if (npc.getNavigation().isDone()) {
@@ -118,16 +159,77 @@ public class WorkerWorkGoal extends Goal {
                 if (npc.level().getBlockState(workPos).is(BlockTags.LOGS)) {
                     BlockPos leaf = findLeafNearLog(workPos);
                     if (leaf != null) {
-                        workPos = leaf;
-                        stuckTicks = 0;
-                        npc.getNavigation().moveTo(leaf.getX() + 0.5, leaf.getY(), leaf.getZ() + 0.5, 1.0);
-                        return;
+                        WorkTarget leafTarget = createWorkTarget(leaf);
+                        if (leafTarget != null) {
+                            recoverScaffold();
+                            applyWorkTarget(leafTarget);
+                            stuckTicks = 0;
+                            moveToNextWorkPosition();
+                            return;
+                        }
                     }
                 }
+                markTemporarilyUnreachable(workPos);
+                recoverScaffold();
                 workPos = null;
+                workStandPos = null;
             } else {
-                npc.getNavigation().moveTo(workPos.getX() + 0.5, workPos.getY(), workPos.getZ() + 0.5, 1.0);
+                moveToWorkStand();
             }
+        }
+    }
+
+    private void applyWorkTarget(WorkTarget target) {
+        this.workPos = target.blockPos();
+        this.workStandPos = target.standPos();
+        this.workScaffoldPos = target.scaffoldPos();
+        this.workApproachPos = target.approachPos();
+        this.scaffoldBuilt = false;
+        this.placedScaffoldBlock = null;
+    }
+
+    private void moveToNextWorkPosition() {
+        if (workScaffoldPos != null && !scaffoldBuilt && workApproachPos != null) {
+            npc.getNavigation().moveTo(
+                    workApproachPos.getX() + 0.5, workApproachPos.getY(), workApproachPos.getZ() + 0.5, 1.0);
+        } else {
+            moveToWorkStand();
+        }
+    }
+
+    /** 先站到垫脚台旁边放置材料，再走上高一格的作业站位。 */
+    private void tickBuildScaffold() {
+        npc.getLookControl().setLookAt(
+                workScaffoldPos.getX() + 0.5, workScaffoldPos.getY() + 0.5, workScaffoldPos.getZ() + 0.5);
+        double approachDistSq = npc.distanceToSqr(
+                workApproachPos.getX() + 0.5, workApproachPos.getY(), workApproachPos.getZ() + 0.5);
+        if (approachDistSq <= STAND_REACHED_SQ) {
+            npc.getNavigation().stop();
+            if (!placeScaffold()) {
+                markTemporarilyUnreachable(workPos);
+                workPos = null;
+                workStandPos = null;
+                return;
+            }
+            scaffoldBuilt = true;
+            stuckTicks = 0;
+            npc.swing(InteractionHand.MAIN_HAND);
+            moveToWorkStand();
+        } else if (npc.getNavigation().isDone()) {
+            if (++stuckTicks > 10) {
+                markTemporarilyUnreachable(workPos);
+                workPos = null;
+                workStandPos = null;
+            } else {
+                moveToNextWorkPosition();
+            }
+        }
+    }
+
+    private void moveToWorkStand() {
+        if (workStandPos != null) {
+            npc.getNavigation().moveTo(
+                    workStandPos.getX() + 0.5, workStandPos.getY(), workStandPos.getZ() + 0.5, 1.0);
         }
     }
 
@@ -140,21 +242,32 @@ public class WorkerWorkGoal extends Goal {
     }
 
     /** 扫描附近可挖的方块：先砍树（原木），再清树叶找树干，再挖露天石头/矿，最后挖开覆盖层找矿 */
-    private BlockPos findWork() {
+    private WorkTarget findWork() {
         BlockPos center = npc.blockPosition();
         BlockPos fallback = null;
         BlockPos leafFallback = null;
         BlockPos digTarget = null;
+        double bestMineDist = Double.MAX_VALUE;
         double bestDigDist = Double.MAX_VALUE;
         for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
             for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {
-                // 可达层：砍树 / 挖露天石头矿石 / 清树叶（向上扩到 +4，能扫到高处树干/树枝）
-                for (int dy = -2; dy <= 4; dy++) {
+                // 可达层：向上扩到 +6；普通站位够不到时允许搭一格临时垫脚台。
+                for (int dy = -2; dy <= 6; dy++) {
                     BlockPos p = center.offset(dx, dy, dz);
                     if (!npc.isWorkAllowedAt(p)) continue;
+                    if (isTemporarilyUnreachable(p)) continue;
                     BlockState state = npc.level().getBlockState(p);
-                    if (state.is(BlockTags.LOGS)) return p; // 优先砍树
-                    if (fallback == null && isMineTarget(state)) fallback = p;
+                    if (state.is(BlockTags.LOGS)) {
+                        WorkTarget logTarget = createWorkTarget(p);
+                        if (logTarget != null) return logTarget; // 优先砍树
+                    }
+                    if (isMineTarget(state)) {
+                        double d = center.distSqr(p);
+                        if (d < bestMineDist) {
+                            bestMineDist = d;
+                            fallback = p;
+                        }
+                    }
                     if (leafFallback == null && state.is(BlockTags.LEAVES) && isLeafNearLog(p)) {
                         leafFallback = p;
                     }
@@ -171,9 +284,192 @@ public class WorkerWorkGoal extends Goal {
                 }
             }
         }
-        if (leafFallback != null) return leafFallback;
-        if (fallback != null) return fallback;
-        return digTarget;
+        WorkTarget target = createWorkTarget(leafFallback);
+        if (target != null) return target;
+        target = createWorkTarget(fallback);
+        if (target != null) return target;
+        return createWorkTarget(digTarget);
+    }
+
+    /**
+     * 为目标寻找真正可站立、可触及的作业位置。高处目标会优先使用附近已有的平台，
+     * 而不是要求寻路器走进实体方块中心。
+     */
+    private WorkTarget createWorkTarget(BlockPos target) {
+        if (target == null || isTemporarilyUnreachable(target)) return null;
+
+        BlockPos current = npc.blockPosition();
+        if (isValidStandPosition(current, target)) {
+            return new WorkTarget(target.immutable(), current.immutable());
+        }
+
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (int dy = -4; dy <= 1; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    BlockPos stand = target.offset(dx, dy, dz);
+                    if (!isValidStandPosition(stand, target)) continue;
+                    // createPath(null) 代表原版寻路器无法到达该站位。
+                    if (npc.getNavigation().createPath(stand, 0) == null) continue;
+                    double dist = current.distSqr(stand);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        best = stand;
+                    }
+                }
+            }
+        }
+
+        if (best != null) return new WorkTarget(target.immutable(), best.immutable());
+
+        WorkTarget scaffoldTarget = createScaffoldTarget(target);
+        if (scaffoldTarget != null) return scaffoldTarget;
+
+        markTemporarilyUnreachable(target);
+        return null;
+    }
+
+    private boolean isValidStandPosition(BlockPos stand, BlockPos target) {
+        return isWalkableStandPosition(stand) && canReachTargetFromStand(stand, target);
+    }
+
+    private boolean isWalkableStandPosition(BlockPos stand) {
+        if (!npc.level().isLoaded(stand)) return false;
+        BlockState feet = npc.level().getBlockState(stand);
+        BlockState head = npc.level().getBlockState(stand.above());
+        BlockPos floorPos = stand.below();
+        BlockState floor = npc.level().getBlockState(floorPos);
+        if (!feet.getCollisionShape(npc.level(), stand).isEmpty()) return false;
+        if (!head.getCollisionShape(npc.level(), stand.above()).isEmpty()) return false;
+        return floor.isFaceSturdy(npc.level(), floorPos, Direction.UP);
+    }
+
+    private boolean canReachTargetFromStand(BlockPos stand, BlockPos target) {
+        if (!npc.level().isLoaded(target)) return false;
+        Vec3 standEye = new Vec3(
+                stand.getX() + 0.5,
+                stand.getY() + npc.getEyeHeight(),
+                stand.getZ() + 0.5);
+        Vec3 targetCenter = Vec3.atCenterOf(target);
+        if (standEye.distanceToSqr(targetCenter) > WORK_REACH_SQ) return false;
+
+        BlockHitResult hit = npc.level().clip(new ClipContext(
+                standEye, targetCenter, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, npc));
+        return hit.getType() == HitResult.Type.MISS || hit.getBlockPos().equals(target);
+    }
+
+    /** 为高处矿物规划一个一格高的临时垫脚台。 */
+    private WorkTarget createScaffoldTarget(BlockPos target) {
+        if (!isMineTarget(npc.level().getBlockState(target)) || findScaffoldSlot() < 0) return null;
+
+        BlockPos current = npc.blockPosition();
+        WorkTarget best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (int dy = -5; dy <= -3; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    BlockPos stand = target.offset(dx, dy, dz);
+                    BlockPos scaffold = stand.below();
+                    if (!isScaffoldGeometryValid(scaffold, stand, target)) continue;
+                    BlockPos approach = findScaffoldApproach(scaffold);
+                    if (approach == null) continue;
+                    double dist = current.distSqr(approach);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        best = new WorkTarget(target.immutable(), stand.immutable(),
+                                scaffold.immutable(), approach.immutable());
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    private boolean isScaffoldGeometryValid(BlockPos scaffold, BlockPos stand, BlockPos target) {
+        if (!npc.isWorkAllowedAt(scaffold) || !npc.level().isLoaded(scaffold)) return false;
+        if (!npc.level().getBlockState(scaffold).isAir()) return false;
+        if (!npc.level().getBlockState(stand).getCollisionShape(npc.level(), stand).isEmpty()) return false;
+        if (!npc.level().getBlockState(stand.above()).getCollisionShape(npc.level(), stand.above()).isEmpty()) {
+            return false;
+        }
+        BlockPos supportPos = scaffold.below();
+        if (!npc.level().getBlockState(supportPos).isFaceSturdy(npc.level(), supportPos, Direction.UP)) {
+            return false;
+        }
+        return canReachTargetFromStand(stand, target);
+    }
+
+    private BlockPos findScaffoldApproach(BlockPos scaffold) {
+        BlockPos current = npc.blockPosition();
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (Direction direction : Direction.Plane.HORIZONTAL) {
+            BlockPos approach = scaffold.relative(direction);
+            if (!isWalkableStandPosition(approach)) continue;
+            if (!approach.equals(current) && npc.getNavigation().createPath(approach, 0) == null) continue;
+            double dist = current.distSqr(approach);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = approach;
+            }
+        }
+        return best;
+    }
+
+    private int findScaffoldSlot() {
+        var inventory = npc.getEquipmentInventory();
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            if (scaffoldBlockFor(inventory.getItem(i)) != null) return i;
+        }
+        return -1;
+    }
+
+    private static Block scaffoldBlockFor(ItemStack stack) {
+        if (stack.is(Items.COBBLESTONE)) return Blocks.COBBLESTONE;
+        if (stack.is(Items.COBBLED_DEEPSLATE)) return Blocks.COBBLED_DEEPSLATE;
+        if (stack.is(Items.DIRT)) return Blocks.DIRT;
+        return null;
+    }
+
+    private boolean placeScaffold() {
+        if (workScaffoldPos == null || !npc.level().getBlockState(workScaffoldPos).isAir()) return false;
+        int slot = findScaffoldSlot();
+        if (slot < 0) return false;
+        ItemStack stack = npc.getEquipmentInventory().getItem(slot);
+        Block block = scaffoldBlockFor(stack);
+        if (block == null || !npc.level().setBlock(
+                workScaffoldPos, block.defaultBlockState(), Block.UPDATE_ALL)) return false;
+        stack.shrink(1);
+        placedScaffoldBlock = block;
+        return true;
+    }
+
+    private void recoverScaffold() {
+        if (!scaffoldBuilt || workScaffoldPos == null || placedScaffoldBlock == null) return;
+        BlockState state = npc.level().getBlockState(workScaffoldPos);
+        if (!state.is(placedScaffoldBlock)) return;
+        npc.level().destroyBlock(workScaffoldPos, false, npc);
+        ItemStack recovered = new ItemStack(placedScaffoldBlock);
+        if (!npc.addToBag(recovered)) npc.spawnAtLocation(recovered);
+        scaffoldBuilt = false;
+        placedScaffoldBlock = null;
+    }
+
+    private boolean isTemporarilyUnreachable(BlockPos pos) {
+        Long until = unreachableUntil.get(pos);
+        return until != null && until > npc.level().getGameTime();
+    }
+
+    private void markTemporarilyUnreachable(BlockPos pos) {
+        if (pos != null) {
+            unreachableUntil.put(pos.immutable(), npc.level().getGameTime() + UNREACHABLE_COOLDOWN_TICKS);
+        }
+    }
+
+    private void clearExpiredUnreachableTargets() {
+        long now = npc.level().getGameTime();
+        unreachableUntil.entrySet().removeIf(entry -> entry.getValue() <= now);
     }
 
     /** 树叶附近 3 格内是否有原木（清树叶以露出树干） */

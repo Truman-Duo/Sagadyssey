@@ -27,6 +27,8 @@ public class TargetSelector {
     /** 附近敌对扫描范围 */
     private static final double NEARBY_SCAN_RANGE = 16.0D;
     private static final double NEARBY_SCAN_RANGE_MOUNTED = 24.0D;
+    private static final double OWNER_COMBAT_RANGE = 32.0D;
+    private static final int VANILLA_COMBAT_MEMORY_TICKS = 100;
 
     public TargetSelector(NpcBase npc) {
         this.npc = npc;
@@ -65,12 +67,13 @@ public class TargetSelector {
             if (npc.getOwnerUUID() == null) return null;
             Player owner = npc.level().getPlayerByUUID(npc.getOwnerUUID());
             if (owner == null || !owner.isAlive()) return null;
-            LivingEntity attacker = owner.getLastHurtByMob();
-            if (attacker == null || !attacker.isAlive()) return null;
-            if (attacker == npc) return null;
-            if (npc.isOwnedBy(attacker.getUUID())) return null;
-            double range = npc.isPassenger() ? NEARBY_SCAN_RANGE_MOUNTED : NEARBY_SCAN_RANGE;
-            if (npc.distanceToSqr(attacker) > range * range) return null;
+            LivingEntity attacker = npc.getOwnerDefenseTargetCandidate();
+            if (attacker == null
+                    && owner.tickCount - owner.getLastHurtByMobTimestamp() <= VANILLA_COMBAT_MEMORY_TICKS) {
+                attacker = owner.getLastHurtByMob();
+            }
+            if (!isValidCombatTarget(npc, attacker)) return null;
+            if (npc.distanceToSqr(attacker) > OWNER_COMBAT_RANGE * OWNER_COMBAT_RANGE) return null;
             return new TargetResult(attacker, TargetReason.OWNER_ATTACKED);
         };
     }
@@ -81,11 +84,13 @@ public class TargetSelector {
             if (npc.getOwnerUUID() == null) return null;
             Player owner = npc.level().getPlayerByUUID(npc.getOwnerUUID());
             if (owner == null || !owner.isAlive()) return null;
-            LivingEntity victim = owner.getLastHurtMob();
-            if (victim == null || !victim.isAlive() || victim == npc) return null;
-            if (npc.isOwnedBy(victim.getUUID())) return null;
-            double range = npc.isPassenger() ? NEARBY_SCAN_RANGE_MOUNTED : NEARBY_SCAN_RANGE;
-            if (npc.distanceToSqr(victim) > range * range) return null;
+            LivingEntity victim = npc.getOwnerAssistTargetCandidate();
+            if (victim == null
+                    && owner.tickCount - owner.getLastHurtMobTimestamp() <= VANILLA_COMBAT_MEMORY_TICKS) {
+                victim = owner.getLastHurtMob();
+            }
+            if (!isValidCombatTarget(npc, victim)) return null;
+            if (npc.distanceToSqr(victim) > OWNER_COMBAT_RANGE * OWNER_COMBAT_RANGE) return null;
             return new TargetResult(victim, TargetReason.OWNER_ATTACKING);
         };
     }
@@ -93,9 +98,9 @@ public class TargetSelector {
     /** 优先级 3：自卫（谁打了这个 NPC） */
     public static TargetSource selfDefense() {
         return npc -> {
+            if (npc.tickCount - npc.getLastHurtByMobTimestamp() > VANILLA_COMBAT_MEMORY_TICKS) return null;
             LivingEntity attacker = npc.getLastHurtByMob();
-            if (attacker == null || !attacker.isAlive() || attacker == npc) return null;
-            if (npc.isOwnedBy(attacker.getUUID())) return null;
+            if (!isValidCombatTarget(npc, attacker)) return null;
             return new TargetResult(attacker, TargetReason.SELF_DEFENSE);
         };
     }
@@ -104,8 +109,7 @@ public class TargetSelector {
     public static TargetSource revenge() {
         return npc -> {
             LivingEntity candidate = npc.getHostileTargetCandidate();
-            if (candidate == null || !candidate.isAlive()) return null;
-            if (npc.isOwnedBy(candidate.getUUID())) return null;
+            if (!isValidCombatTarget(npc, candidate)) return null;
             npc.setHostileTargetCandidate(null); // 消费后清除
             return new TargetResult(candidate, TargetReason.REVENGE);
         };
@@ -128,7 +132,8 @@ public class TargetSelector {
             if (npcFaction != null && npcFaction.canBeHostile()) {
                 List<Player> players = npc.level().getEntitiesOfClass(Player.class, box,
                         p -> p.isAlive() && !p.isSpectator() && !p.isCreative()
-                                && !npc.isOwnedBy(p.getUUID()));
+                                && !npc.isCombatAlly(p)
+                                && npc.getSensing().hasLineOfSight(p));
                 for (Player p : players) {
                     var standings = FactionAttachments.getStandings(p);
                     if (!standings.isHostile(npcFaction)) continue;
@@ -144,6 +149,8 @@ public class TargetSelector {
             if (npcFaction != null && npcFaction.canBeHostile()) {
                 List<NpcBase> nearbyNpcs = npc.level().getEntitiesOfClass(NpcBase.class, box,
                         n -> n.isAlive() && n != npc
+                                && !npc.isCombatAlly(n)
+                                && npc.getSensing().hasLineOfSight(n)
                                 && StandingModifier.isHostileBetween(
                                         npc, n, npc.getOwnerUUID(), n.getOwnerUUID()));
                 for (NpcBase n : nearbyNpcs) {
@@ -159,7 +166,8 @@ public class TargetSelector {
             List<Mob> monsters = npc.level().getEntitiesOfClass(Mob.class, box,
                     m -> m.isAlive() && m != npc
                             && m.getType().getCategory() == MobCategory.MONSTER
-                            && !npc.isOwnedBy(m.getUUID()));
+                            && !npc.isCombatAlly(m)
+                            && npc.getSensing().hasLineOfSight(m));
             for (Mob m : monsters) {
                 double dist = npc.distanceToSqr(m);
                 if (dist < bestDist) {
@@ -173,5 +181,11 @@ public class TargetSelector {
             }
             return null;
         };
+    }
+
+    private static boolean isValidCombatTarget(NpcBase npc, LivingEntity target) {
+        if (target == null || !target.isAlive() || target == npc || target.level() != npc.level()) return false;
+        if (target instanceof Player player && (player.isCreative() || player.isSpectator())) return false;
+        return !npc.isCombatAlly(target);
     }
 }

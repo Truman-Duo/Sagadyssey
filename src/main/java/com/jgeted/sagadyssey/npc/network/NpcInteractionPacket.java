@@ -96,8 +96,11 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
      * 处理 stats 请求：收集 NPC 属性，发回客户端。
      */
     private static void handleRequestStats(ServerPlayer player, NpcBase npc) {
-        NpcStatsPayload payload = NpcStatsPayload.from(npc);
-        PacketDistributor.sendToPlayer(player, payload);
+        if (!npc.isAlive() || player.distanceToSqr(npc) > 64.0D) {
+            player.displayClientMessage(Component.literal("§c你离 NPC 太远了"), true);
+            return;
+        }
+        NpcStatsPayload.openFor(player, npc);
     }
 
     /**
@@ -149,8 +152,6 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
 
         // 设置主人（setOwner 内部已自动切阵营 + 保存原阵营）
         npc.setOwner(player.getUUID());
-        // 同步到客户端（招募后阵营变了，需刷新 GUI）
-        NpcStatsPayload.sync(npc);
 
         // 通知玩家
         player.displayClientMessage(
@@ -382,8 +383,6 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
         if (!npc.isOwnedBy(player.getUUID())) return;
         String oldOriginal = npc.getOriginalFaction();
         npc.dismiss();
-        // 同步到客户端（阵营变了，需刷新 GUI）
-        NpcStatsPayload.sync(npc);
         String backTo = oldOriginal != null ? oldOriginal : "sagadyssey:wilderness";
         player.displayClientMessage(
                 Component.literal("§a已解散 NPC，它回到了 " + backTo + " 阵营"), true);

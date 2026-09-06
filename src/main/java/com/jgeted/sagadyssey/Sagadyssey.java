@@ -13,6 +13,7 @@ import com.jgeted.sagadyssey.core.registry.ModMenuTypes;
 import com.jgeted.sagadyssey.core.structure.SagadysseyStructures;
 import com.jgeted.sagadyssey.npc.event.NpcExperienceEvents;
 import com.jgeted.sagadyssey.npc.event.NpcFactionEvents;
+import com.jgeted.sagadyssey.npc.event.NpcOwnerCombatEvents;
 import com.jgeted.sagadyssey.npc.faction.FactionAttachments;
 import com.jgeted.sagadyssey.npc.faction.FactionRegistry;
 import com.jgeted.sagadyssey.npc.faction.StandingDecayHandler;
@@ -105,6 +106,7 @@ public class Sagadyssey {
 
         // 注册 NPC 经验事件
         NeoForge.EVENT_BUS.register(NpcExperienceEvents.class);
+        NeoForge.EVENT_BUS.register(NpcOwnerCombatEvents.class);
 
         // 注册阵营声望事件处理器（击杀、睡眠、涟漪重置等）
         NeoForge.EVENT_BUS.register(new NpcFactionEvents());

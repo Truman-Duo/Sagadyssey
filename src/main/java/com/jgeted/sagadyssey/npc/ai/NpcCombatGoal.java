@@ -21,9 +21,16 @@ public class NpcCombatGoal extends Goal {
     private final NpcBase npc;
     private final TargetSelector targetSelector;
     private int scanCooldown;
+    private int priorityRecheckCooldown;
+    private int unseenTicks;
+    private TargetReason currentReason;
 
     private static final int SCAN_INTERVAL_PROTECT = 3;   // 保护主人模式扫描更快
     private static final int SCAN_INTERVAL_HOSTILE = 20;  // 普通敌对扫描间隔
+    private static final int TARGET_RECHECK_INTERVAL = 3;
+    private static final int UNSEEN_FORGET_TICKS = 30;
+    private static final int OWNER_THREAT_UNSEEN_TICKS = 100;
+    private static final double MAX_COMBAT_RANGE_SQ = 32.0D * 32.0D;
 
     public NpcCombatGoal(NpcBase npc) {
         this.npc = npc;
@@ -34,10 +41,9 @@ public class NpcCombatGoal extends Goal {
     /** 根据 NPC 是否有主人构建目标源链 */
     private TargetSelector buildSelector() {
         TargetSelector selector = new TargetSelector(npc);
-        if (npc.getOwnerUUID() != null) {
-            selector.register(TargetSelector.ownerAttacked());
-            selector.register(TargetSelector.ownerAttacking());
-        }
+        // 始终注册主人目标源；源内部自行检查 owner。这样从存档加载 owner 后无需重新构建。
+        selector.register(TargetSelector.ownerAttacked());
+        selector.register(TargetSelector.ownerAttacking());
         selector.register(TargetSelector.selfDefense());
         selector.register(TargetSelector.revenge());
         selector.register(TargetSelector.nearbyHostile());
@@ -61,6 +67,8 @@ public class NpcCombatGoal extends Goal {
         TargetResult result = targetSelector.selectTarget();
         if (result != null) {
             npc.setTarget(result.target());
+            currentReason = result.reason();
+            unseenTicks = 0;
             // 目标已设置，立即释放 ATTACK，让战斗执行 goal（远程/近战）持有该位
             npc.releaseMutex(AiMutex.ATTACK);
             return true;
@@ -75,11 +83,6 @@ public class NpcCombatGoal extends Goal {
      * STAY 模式下只响应高优先级威胁（owner 相关 + 自卫 + 仇恨候选），不主动扫描。
      */
     private boolean evaluateStayMode() {
-        if (npc.getTarget() != null && npc.getTarget().isAlive()
-                && npc.distanceToSqr(npc.getTarget()) < 36.0D) {
-            return false; // 近身有敌，StayGoal 已放行
-        }
-
         // 轻量检查：只查前 4 级（跳过 NEARBY_HOSTILE 扫描）
         TargetResult r;
         r = checkOwnerAttackedQuick();
@@ -95,30 +98,18 @@ public class NpcCombatGoal extends Goal {
     }
 
     private TargetResult checkOwnerAttackedQuick() {
-        if (npc.getOwnerUUID() == null) return null;
-        Player owner = npc.level().getPlayerByUUID(npc.getOwnerUUID());
-        if (owner == null || !owner.isAlive()) return null;
-        LivingEntity attacker = owner.getLastHurtByMob();
-        if (attacker == null || !attacker.isAlive() || attacker == npc) return null;
-        if (npc.isOwnedBy(attacker.getUUID())) return null;
-        if (npc.distanceToSqr(attacker) > 256.0D) return null;
-        return new TargetResult(attacker, TargetReason.OWNER_ATTACKED);
+        return TargetSelector.ownerAttacked().evaluate(npc);
     }
 
     private TargetResult checkOwnerAttackingQuick() {
-        if (npc.getOwnerUUID() == null) return null;
-        Player owner = npc.level().getPlayerByUUID(npc.getOwnerUUID());
-        if (owner == null || !owner.isAlive()) return null;
-        LivingEntity victim = owner.getLastHurtMob();
-        if (victim == null || !victim.isAlive() || victim == npc) return null;
-        if (npc.isOwnedBy(victim.getUUID())) return null;
-        if (npc.distanceToSqr(victim) > 256.0D) return null;
-        return new TargetResult(victim, TargetReason.OWNER_ATTACKING);
+        return TargetSelector.ownerAttacking().evaluate(npc);
     }
 
     private void applyResult(TargetResult r) {
         if (npc.requestMutex(AiMutex.ATTACK)) {
             npc.setTarget(r.target());
+            currentReason = r.reason();
+            unseenTicks = 0;
             // 目标已设置，立即释放 ATTACK，供战斗执行 goal 持有
             npc.releaseMutex(AiMutex.ATTACK);
         }
@@ -129,25 +120,61 @@ public class NpcCombatGoal extends Goal {
         LivingEntity target = npc.getTarget();
         if (target == null || !target.isAlive()) return false;
         if (target instanceof Player p && (p.isSpectator() || p.isCreative())) return false;
-        if (npc.isOwnedBy(target.getUUID())) return false;
+        if (npc.isCombatAlly(target)) return false;
 
         // FOLLOWER/保护模式下检查主人距离
         if (npc.getOwnerUUID() != null && npc.getCommand() == NpcCommand.FOLLOW) {
             Player owner = npc.level().getPlayerByUUID(npc.getOwnerUUID());
-            if (owner != null && npc.distanceToSqr(owner) > 256.0D) return false;
+            if (owner != null && npc.distanceToSqr(owner) > MAX_COMBAT_RANGE_SQ) return false;
         }
 
-        return npc.distanceToSqr(target) <= 576.0D; // 24 格范围
+        if (npc.distanceToSqr(target) > MAX_COMBAT_RANGE_SQ) return false;
+
+        if (npc.getSensing().hasLineOfSight(target)) {
+            unseenTicks = 0;
+        } else {
+            unseenTicks++;
+            int limit = currentReason == TargetReason.OWNER_ATTACKED
+                    || currentReason == TargetReason.OWNER_ATTACKING
+                    ? OWNER_THREAT_UNSEEN_TICKS : UNSEEN_FORGET_TICKS;
+            if (unseenTicks > limit) return false;
+        }
+        return true;
     }
 
     @Override
     public void start() {
-        // target 已在 canUse 中设置
+        priorityRecheckCooldown = 0;
+        unseenTicks = 0;
+    }
+
+    @Override
+    public void tick() {
+        if (--priorityRecheckCooldown > 0) return;
+        priorityRecheckCooldown = TARGET_RECHECK_INTERVAL;
+
+        TargetResult result = targetSelector.selectTarget();
+        if (result == null) return;
+        LivingEntity current = npc.getTarget();
+        boolean currentInvalid = current == null || !current.isAlive() || npc.isCombatAlly(current);
+        boolean higherPriority = currentReason == null
+                || result.reason().ordinal() < currentReason.ordinal();
+        boolean newerOwnerThreat = result.target() != current
+                && (result.reason() == TargetReason.OWNER_ATTACKED
+                    || result.reason() == TargetReason.OWNER_ATTACKING)
+                && (currentReason == result.reason());
+        if (currentInvalid || higherPriority || newerOwnerThreat) {
+            npc.setTarget(result.target());
+            currentReason = result.reason();
+            unseenTicks = 0;
+        }
     }
 
     @Override
     public void stop() {
         npc.setTarget(null);
+        currentReason = null;
+        unseenTicks = 0;
         // ATTACK 已在 canUse/applyResult 中设置目标后立即释放，
         // 这里不释放，避免误放战斗执行 goal（NpcRangedAttackGoal 等）正持有的位
     }
@@ -157,12 +184,8 @@ public class NpcCombatGoal extends Goal {
      */
     public void refreshSources() {
         targetSelector.clear();
-        TargetSelector selector = buildSelector();
-        // 复制 buildSelector 中注册的源到当前 selector
-        if (npc.getOwnerUUID() != null) {
-            targetSelector.register(TargetSelector.ownerAttacked());
-            targetSelector.register(TargetSelector.ownerAttacking());
-        }
+        targetSelector.register(TargetSelector.ownerAttacked());
+        targetSelector.register(TargetSelector.ownerAttacking());
         targetSelector.register(TargetSelector.selfDefense());
         targetSelector.register(TargetSelector.revenge());
         targetSelector.register(TargetSelector.nearbyHostile());

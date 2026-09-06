@@ -179,6 +179,11 @@ public record NpcStatsPayload(
     public static void handle(final NpcStatsPayload data, final IPayloadContext context) {
         context.enqueueWork(() -> {
             Minecraft mc = Minecraft.getInstance();
+            // 这是“打开界面”的响应包，只允许从游戏画面进入；不得覆盖玩家正在使用的其他 UI。
+            if (mc.player == null || mc.level == null || mc.screen != null) return;
+            var entity = mc.level.getEntity(data.npcId());
+            if (!(entity instanceof NpcBase npc) || !npc.isAlive()
+                    || mc.player.distanceToSqr(npc) > 64.0D) return;
             if (data.isOwned) {
                 mc.setScreen(new NpcCommandScreen(data));
             } else {
@@ -262,10 +267,8 @@ public record NpcStatsPayload(
         );
     }
 
-    /** 同步 NPC 属性到所有附近玩家 */
-    public static void sync(NpcBase npc) {
-        if (!npc.level().isClientSide) {
-            PacketDistributor.sendToPlayersTrackingEntityAndSelf(npc, from(npc));
-        }
+    /** 只向明确请求交互的玩家发送界面数据，绝不广播给附近玩家。 */
+    public static void openFor(ServerPlayer player, NpcBase npc) {
+        PacketDistributor.sendToPlayer(player, from(npc));
     }
 }

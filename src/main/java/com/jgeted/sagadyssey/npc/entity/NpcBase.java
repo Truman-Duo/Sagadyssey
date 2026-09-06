@@ -159,6 +159,14 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
     @Nullable
     private LivingEntity hostileTargetCandidate = null;
 
+    /** 主人最近的攻击者/攻击目标，由服务端伤害事件写入，解决多人战斗同步不稳定。 */
+    @Nullable
+    private LivingEntity ownerDefenseTargetCandidate = null;
+    private long ownerDefenseTargetUntil = 0L;
+    @Nullable
+    private LivingEntity ownerAssistTargetCandidate = null;
+    private long ownerAssistTargetUntil = 0L;
+
     /** 战斗目标选择 goal 引用（主人变更时刷新目标源） */
     @Nullable
     private com.jgeted.sagadyssey.npc.ai.NpcCombatGoal combatGoal = null;
@@ -956,6 +964,36 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
         this.hostileTargetCandidate = target;
     }
 
+    public void rememberOwnerDefenseTarget(LivingEntity target, long durationTicks) {
+        this.ownerDefenseTargetCandidate = target;
+        this.ownerDefenseTargetUntil = level().getGameTime() + durationTicks;
+    }
+
+    @Nullable
+    public LivingEntity getOwnerDefenseTargetCandidate() {
+        if (ownerDefenseTargetCandidate == null || !ownerDefenseTargetCandidate.isAlive()
+                || ownerDefenseTargetCandidate.level() != level()
+                || level().getGameTime() > ownerDefenseTargetUntil) {
+            ownerDefenseTargetCandidate = null;
+        }
+        return ownerDefenseTargetCandidate;
+    }
+
+    public void rememberOwnerAssistTarget(LivingEntity target, long durationTicks) {
+        this.ownerAssistTargetCandidate = target;
+        this.ownerAssistTargetUntil = level().getGameTime() + durationTicks;
+    }
+
+    @Nullable
+    public LivingEntity getOwnerAssistTargetCandidate() {
+        if (ownerAssistTargetCandidate == null || !ownerAssistTargetCandidate.isAlive()
+                || ownerAssistTargetCandidate.level() != level()
+                || level().getGameTime() > ownerAssistTargetUntil) {
+            ownerAssistTargetCandidate = null;
+        }
+        return ownerAssistTargetCandidate;
+    }
+
     /** 判断坐骑当前是否被拴绳拴住 */
     public boolean isMountLeashed() {
         if (!hasMount()) return false;
@@ -1120,7 +1158,7 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
      * 检查实体是否为盟友。
      * player 阵营 NPC 之间：同 ownerUUID → 盟友，不需要查声望。
      */
-    private boolean isAlliedTo(LivingEntity entity) {
+    public boolean isCombatAlly(LivingEntity entity) {
         if (entity instanceof Player player) {
             return isOwnedBy(player.getUUID());
         }
@@ -1307,7 +1345,7 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
             }
         }
         // 被非盟友攻击时记录候选目标（由 TargetSelector 优先级链消费）
-        if (source.getEntity() instanceof LivingEntity attacker && attacker.isAlive() && !isAlliedTo(attacker)) {
+        if (source.getEntity() instanceof LivingEntity attacker && attacker.isAlive() && !isCombatAlly(attacker)) {
             this.hostileTargetCandidate = attacker;
         }
         return super.hurt(source, amount);

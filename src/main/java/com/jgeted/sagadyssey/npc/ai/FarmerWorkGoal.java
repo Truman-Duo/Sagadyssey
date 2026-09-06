@@ -50,6 +50,8 @@ public class FarmerWorkGoal extends Goal {
     private static final int KIND_HARVEST_PLANT = 12; // 收+原位补种（综合模式）
     private static final int KIND_BONEMEAL = 13;       // 骨粉催熟
     private static final int KIND_CRAFT_BONEMEAL = 14; // 分解骨块/骨头为骨粉
+    private static final int KIND_CREATE_IRRIGATION = 15; // 挖一格水坑并放置水源
+    private static final int KIND_CREATE_FARM_WELL = 16;  // 两桶水建立 2×2 无限水井
 
     // 灌溉阶段
     private static final int PHASE_BUILD_WELL = 0;
@@ -267,6 +269,8 @@ public class FarmerWorkGoal extends Goal {
                 }
             }
         }
+        Work irrigation = findIrrigationWork(min, max, groundY);
+        if (irrigation != null) return irrigation;
         if (plant != null) return plant;
         if (till != null) return till;
         return null;
@@ -308,6 +312,8 @@ public class FarmerWorkGoal extends Goal {
                 }
             }
         }
+        Work irrigation = findIrrigationWork(min, max, groundY);
+        if (irrigation != null) return irrigation;
         if (plant != null) return plant;
         if (till != null) return till;
         return null;
@@ -361,9 +367,121 @@ public class FarmerWorkGoal extends Goal {
                 }
             }
         }
+        Work irrigation = findIrrigationWork(min, max, groundY);
+        if (irrigation != null) return irrigation;
         if (plant != null) return plant;
         if (till != null) return till;
         return null;
+    }
+
+    /**
+     * 普通农田灌溉：一个水源负责同层 9×9 的区域。农民有水桶时会自己挖坑放水；
+     * 只有空桶时，会先去附近的无限水源补水，再回来继续规划。
+     */
+    private Work findIrrigationWork(BlockPos min, BlockPos max, int groundY) {
+        BlockPos dryGround = findDryFarmGround(min, max, groundY);
+        if (dryGround == null) return null;
+
+        BlockPos irrigationPos = planIrrigationPos(dryGround, min, max, groundY);
+        if (irrigationPos == null) return null;
+
+        BlockPos infiniteSource = findInfiniteWaterNear();
+        if (infiniteSource == null && hasTwoWaterBuckets()) {
+            BlockPos wellCorner = findFarmWellCorner(irrigationPos, min, max, groundY);
+            if (wellCorner != null) return new Work(wellCorner, KIND_CREATE_FARM_WELL);
+        }
+        if (hasWaterBucket()) {
+            return new Work(irrigationPos, KIND_CREATE_IRRIGATION);
+        }
+        if (hasEmptyBucket() && infiniteSource != null) {
+            return new Work(infiniteSource, KIND_REFILL);
+        }
+        // 没有可用水源或水桶时保持原地等待，玩家只需提供水桶，不必亲自摆水。
+        return null;
+    }
+
+    /** 找到需要灌溉的耕地或可开垦地。 */
+    private BlockPos findDryFarmGround(BlockPos min, BlockPos max, int groundY) {
+        for (int x = min.getX(); x <= max.getX(); x++) {
+            for (int z = min.getZ(); z <= max.getZ(); z++) {
+                for (int y = groundY; y <= groundY + 1; y++) {
+                    BlockPos p = new BlockPos(x, y, z);
+                    if (!npc.isWorkAllowedAt(p) || nearWater(p)) continue;
+                    BlockState ground = npc.level().getBlockState(p);
+                    BlockState above = npc.level().getBlockState(p.above());
+                    boolean farmable = ground.is(Blocks.DIRT) || ground.is(Blocks.GRASS_BLOCK)
+                            || ground.is(Blocks.FARMLAND);
+                    boolean usableAbove = above.isAir() || above.getBlock() instanceof CropBlock;
+                    if (farmable && usableAbove) return p;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 以工作区起点切成 9×9 单元并优先选单元中心；中心不能挖时，在本单元中找最近的空地。
+     * 没有工作区时使用世界坐标网格，避免 NPC 走动导致规划点不断漂移。
+     */
+    private BlockPos planIrrigationPos(BlockPos dryGround, BlockPos min, BlockPos max, int groundY) {
+        int tileStartX = npc.hasWorkZone()
+                ? min.getX() + ((dryGround.getX() - min.getX()) / 9) * 9
+                : Math.floorDiv(dryGround.getX(), 9) * 9;
+        int tileStartZ = npc.hasWorkZone()
+                ? min.getZ() + ((dryGround.getZ() - min.getZ()) / 9) * 9
+                : Math.floorDiv(dryGround.getZ(), 9) * 9;
+        int tileEndX = Math.min(tileStartX + 8, max.getX());
+        int tileEndZ = Math.min(tileStartZ + 8, max.getZ());
+        int centerX = (tileStartX + tileEndX) / 2;
+        int centerZ = (tileStartZ + tileEndZ) / 2;
+
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (int x = tileStartX; x <= tileEndX; x++) {
+            for (int z = tileStartZ; z <= tileEndZ; z++) {
+                // 这个水源必须能够覆盖触发规划的那格土地。
+                if (Math.abs(x - dryGround.getX()) > 4 || Math.abs(z - dryGround.getZ()) > 4) continue;
+                BlockPos candidate = new BlockPos(x, groundY, z);
+                if (!isIrrigationCell(candidate)) continue;
+                double dist = candidate.distSqr(new BlockPos(centerX, groundY, centerZ));
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = candidate;
+                }
+            }
+        }
+        return best;
+    }
+
+    private boolean isIrrigationCell(BlockPos pos) {
+        if (!npc.isWorkAllowedAt(pos) || !npc.level().isLoaded(pos)) return false;
+        BlockState state = npc.level().getBlockState(pos);
+        return (state.is(BlockTags.DIRT) || state.is(BlockTags.SAND) || state.is(Blocks.FARMLAND))
+                && npc.level().getBlockState(pos.above()).isAir()
+                && npc.level().getBlockState(pos.below()).isSolid();
+    }
+
+    /** 在规划灌溉点附近找一块完整的 2×2 空地，用两桶水建立可重复打水的水井。 */
+    private BlockPos findFarmWellCorner(BlockPos irrigationPos, BlockPos min, BlockPos max, int groundY) {
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (int ox = -1; ox <= 0; ox++) {
+            for (int oz = -1; oz <= 0; oz++) {
+                BlockPos corner = new BlockPos(irrigationPos.getX() + ox, groundY, irrigationPos.getZ() + oz);
+                if (corner.getX() < min.getX() || corner.getZ() < min.getZ()
+                        || corner.getX() + 1 > max.getX() || corner.getZ() + 1 > max.getZ()) continue;
+                if (!isIrrigationCell(corner)
+                        || !isIrrigationCell(corner.east())
+                        || !isIrrigationCell(corner.south())
+                        || !isIrrigationCell(corner.east().south())) continue;
+                double dist = corner.distSqr(irrigationPos);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = corner;
+                }
+            }
+        }
+        return best;
     }
 
     /** 找一根 3 格高的甘蔗（底节 + 上面两节），返回底节位置或 null */
@@ -826,6 +944,8 @@ public class FarmerWorkGoal extends Goal {
             case KIND_HARVEST_PLANT -> harvestAndReplant();
             case KIND_BONEMEAL -> useBoneMeal();
             case KIND_CRAFT_BONEMEAL -> craftBoneMeal();
+            case KIND_CREATE_IRRIGATION -> createIrrigationSource();
+            case KIND_CREATE_FARM_WELL -> createFarmWell();
             case KIND_HARVEST -> harvest();
             case KIND_PLANT -> plant();
             case KIND_TILL -> till();
@@ -878,6 +998,42 @@ public class FarmerWorkGoal extends Goal {
             npc.level().setBlock(workPos, Blocks.FARMLAND.defaultBlockState(), Block.UPDATE_ALL);
             npc.swing(InteractionHand.MAIN_HAND);
         }
+    }
+
+    /** 一次动作完成挖坑和放水，避免服务器重启后留下无法识别的半成品水坑。 */
+    private void createIrrigationSource() {
+        if (!isIrrigationCell(workPos) || !hasWaterBucket()) return;
+        boolean dug = digIrrigationCell(workPos);
+        if (dug && npc.level().getBlockState(workPos).isAir()) {
+            placeWater(workPos);
+            npc.swing(InteractionHand.MAIN_HAND);
+        }
+    }
+
+    /** 挖好 2×2 水井并在对角放两桶水，其余两格由原版流体规则形成无限水源。 */
+    private void createFarmWell() {
+        if (!hasTwoWaterBuckets()) return;
+        BlockPos east = workPos.east();
+        BlockPos south = workPos.south();
+        BlockPos diagonal = east.south();
+        if (!isIrrigationCell(workPos) || !isIrrigationCell(east)
+                || !isIrrigationCell(south) || !isIrrigationCell(diagonal)) return;
+
+        if (!digIrrigationCell(workPos) || !digIrrigationCell(east)
+                || !digIrrigationCell(south) || !digIrrigationCell(diagonal)) return;
+        if (placeWater(workPos)) {
+            placeWater(diagonal);
+            npc.swing(InteractionHand.MAIN_HAND);
+        }
+    }
+
+    private boolean digIrrigationCell(BlockPos pos) {
+        BlockState state = npc.level().getBlockState(pos);
+        if (state.is(Blocks.FARMLAND)) {
+            npc.level().destroyBlock(pos, false, npc);
+            return true;
+        }
+        return digGround(pos);
     }
 
     /** 种甘蔗：在 workPos（土壤）上方种一格甘蔗苗 */
@@ -1154,6 +1310,7 @@ public class FarmerWorkGoal extends Goal {
 
     /** 打水：把装备栏里所有空桶都灌满（NPC 已走到无限水源边，直接转换） */
     private boolean refillBucket(BlockPos pos) {
+        if (!isInfiniteWater(pos)) return false;
         var inv = npc.getEquipmentInventory();
         boolean any = false;
         for (int i = 0; i < inv.getContainerSize(); i++) {
@@ -1235,6 +1392,8 @@ public class FarmerWorkGoal extends Goal {
             case KIND_HARVEST_PLANT -> "收+补种";
             case KIND_BONEMEAL -> "催熟";
             case KIND_CRAFT_BONEMEAL -> "合成骨粉";
+            case KIND_CREATE_IRRIGATION -> "建灌溉点";
+            case KIND_CREATE_FARM_WELL -> "建无限水井";
             default -> "未知(" + kind + ")";
         };
     }
