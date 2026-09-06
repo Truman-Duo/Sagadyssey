@@ -1,0 +1,52 @@
+{
+  "relations": [
+    {"from": "sagadyssey:kingdom", "to": "sagadyssey:church",        "relation": "ALLY"},
+    {"from": "sagadyssey:kingdom", "to": "sagadyssey:merchant_guild", "relation": "FRIENDLY"},
+    {"from": "sagadyssey:kingdom", "to": "sagadyssey:dwarven",        "relation": "FRIENDLY"},
+    {"from": "sagadyssey:kingdom", "to": "sagadyssey:mystic",         "relation": "DISTRUSTFUL"},
+    {"from": "sagadyssey:kingdom", "to": "sagadyssey:wilderness",     "relation": "NEUTRAL"},
+    {"from": "sagadyssey:kingdom", "to": "sagadyssey:bandit",         "relation": "ENEMY"},
+
+    {"from": "sagadyssey:merchant_guild", "to": "sagadyssey:kingdom",    "relation": "FRIENDLY"},
+    {"from": "sagadyssey:merchant_guild", "to": "sagadyssey:church",     "relation": "NEUTRAL"},
+    {"from": "sagadyssey:merchant_guild", "to": "sagadyssey:dwarven",    "relation": "FRIENDLY"},
+    {"from": "sagadyssey:merchant_guild", "to": "sagadyssey:mystic",     "relation": "NEUTRAL"},
+    {"from": "sagadyssey:merchant_guild", "to": "sagadyssey:wilderness", "relation": "NEUTRAL"},
+    {"from": "sagadyssey:merchant_guild", "to": "sagadyssey:bandit",     "relation": "ENEMY"},
+
+    {"from": "sagadyssey:church", "to": "sagadyssey:kingdom",        "relation": "ALLY"},
+    {"from": "sagadyssey:church", "to": "sagadyssey:merchant_guild", "relation": "NEUTRAL"},
+    {"from": "sagadyssey:church", "to": "sagadyssey:dwarven",        "relation": "NEUTRAL"},
+    {"from": "sagadyssey:church", "to": "sagadyssey:mystic",         "relation": "DISTRUSTFUL"},
+    {"from": "sagadyssey:church", "to": "sagadyssey:wilderness",     "relation": "FRIENDLY"},
+    {"from": "sagadyssey:church", "to": "sagadyssey:bandit",         "relation": "ENEMY"},
+
+    {"from": "sagadyssey:dwarven", "to": "sagadyssey:kingdom",        "relation": "FRIENDLY"},
+    {"from": "sagadyssey:dwarven", "to": "sagadyssey:merchant_guild", "relation": "FRIENDLY"},
+    {"from": "sagadyssey:dwarven", "to": "sagadyssey:church",         "relation": "NEUTRAL"},
+    {"from": "sagadyssey:dwarven", "to": "sagadyssey:mystic",         "relation": "NEUTRAL"},
+    {"from": "sagadyssey:dwarven", "to": "sagadyssey:wilderness",     "relation": "NEUTRAL"},
+    {"from": "sagadyssey:dwarven", "to": "sagadyssey:bandit",         "relation": "ENEMY"},
+
+    {"from": "sagadyssey:mystic", "to": "sagadyssey:kingdom",        "relation": "DISTRUSTFUL"},
+    {"from": "sagadyssey:mystic", "to": "sagadyssey:merchant_guild", "relation": "NEUTRAL"},
+    {"from": "sagadyssey:mystic", "to": "sagadyssey:church",         "relation": "DISTRUSTFUL"},
+    {"from": "sagadyssey:mystic", "to": "sagadyssey:dwarven",        "relation": "NEUTRAL"},
+    {"from": "sagadyssey:mystic", "to": "sagadyssey:wilderness",     "relation": "NEUTRAL"},
+    {"from": "sagadyssey:mystic", "to": "sagadyssey:bandit",         "relation": "DISTRUSTFUL"},
+
+    {"from": "sagadyssey:wilderness", "to": "sagadyssey:kingdom",        "relation": "NEUTRAL"},
+    {"from": "sagadyssey:wilderness", "to": "sagadyssey:merchant_guild", "relation": "NEUTRAL"},
+    {"from": "sagadyssey:wilderness", "to": "sagadyssey:church",         "relation": "FRIENDLY"},
+    {"from": "sagadyssey:wilderness", "to": "sagadyssey:dwarven",        "relation": "NEUTRAL"},
+    {"from": "sagadyssey:wilderness", "to": "sagadyssey:mystic",         "relation": "NEUTRAL"},
+    {"from": "sagadyssey:wilderness", "to": "sagadyssey:bandit",         "relation": "ENEMY"},
+
+    {"from": "sagadyssey:bandit", "to": "sagadyssey:kingdom",        "relation": "ENEMY"},
+    {"from": "sagadyssey:bandit", "to": "sagadyssey:merchant_guild", "relation": "ENEMY"},
+    {"from": "sagadyssey:bandit", "to": "sagadyssey:church",         "relation": "ENEMY"},
+    {"from": "sagadyssey:bandit", "to": "sagadyssey:dwarven",        "relation": "ENEMY"},
+    {"from": "sagadyssey:bandit", "to": "sagadyssey:mystic",         "relation": "DISTRUSTFUL"},
+    {"from": "sagadyssey:bandit", "to": "sagadyssey:wilderness",     "relation": "ENEMY"}
+  ]
+}

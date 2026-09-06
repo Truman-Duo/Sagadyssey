@@ -6,7 +6,9 @@
         "ChunkGeneratorStructureStateMixin",
         "JigsawPlacementMixin",
         "StructureCollisionMixin",
-        "StructureMixin"
+        "StructureMixin",
+        "AbstractHorsePassengerMixin",
+        "CocoaBlockMixin"
     ],
     "client": [],
     "server": []

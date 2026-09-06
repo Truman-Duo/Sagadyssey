@@ -1,7 +1,8 @@
 package com.jgeted.sagadyssey.core.command;
 
 import com.jgeted.sagadyssey.npc.entity.NpcBase;
-import com.jgeted.sagadyssey.npc.faction.NpcFaction;
+import com.jgeted.sagadyssey.npc.faction.Faction;
+import com.jgeted.sagadyssey.npc.faction.FactionRegistry;
 import com.jgeted.sagadyssey.npc.profession.NpcProfession;
 import com.jgeted.sagadyssey.npc.registry.NpcEntityTypes;
 import com.mojang.brigadier.CommandDispatcher;
@@ -15,6 +16,7 @@ import net.minecraft.server.level.ServerPlayer;
 /**
  * NPC 生成命令。
  * /saga npc spawn [profession] [faction] — 在玩家位置生成一个 NPC。
+ * 阵营参数支持新 Faction ID（如 "kingdom"）和旧 NpcFaction 枚举值的自动映射。
  */
 public class NpcSpawnCommand {
 
@@ -38,8 +40,14 @@ public class NpcSpawnCommand {
                                                 })
                                                 .then(Commands.argument("faction", StringArgumentType.word())
                                                         .suggests((ctx, builder) -> {
-                                                            for (NpcFaction f : NpcFaction.values()) {
-                                                                builder.suggest(f.name().toLowerCase());
+                                                            // 建议新 Faction ID
+                                                            for (Faction f : FactionRegistry.getAllFactions()) {
+                                                                // 简化名称（去掉 "sagadyssey:" 前缀）
+                                                                String shortId = f.id();
+                                                                if (shortId.startsWith("sagadyssey:")) {
+                                                                    shortId = shortId.substring("sagadyssey:".length());
+                                                                }
+                                                                builder.suggest(shortId);
                                                             }
                                                             return builder.buildFuture();
                                                         })
@@ -72,17 +80,19 @@ public class NpcSpawnCommand {
             profession = NpcProfession.NONE;
         }
 
-        final NpcFaction faction;
+        final Faction faction;
         if (factionName != null) {
-            try {
-                faction = NpcFaction.valueOf(factionName.toUpperCase());
-            } catch (IllegalArgumentException e) {
+            // 先尝试新 Faction ID（如 "kingdom" → "sagadyssey:kingdom"）
+            String fullId = factionName.contains(":") ? factionName
+                    : "sagadyssey:" + factionName;
+            faction = FactionRegistry.get(fullId);
+            if (faction == null) {
                 source.sendFailure(Component.literal("§c未知阵营：" + factionName
-                        + "。可用：hostile, neutral, friendly"));
+                        + "。可用 Faction ID 见 /sagadyssey faction list"));
                 return 0;
             }
         } else {
-            faction = NpcFaction.NEUTRAL;
+            faction = FactionRegistry.get("sagadyssey:wilderness");
         }
 
         NpcBase npc = new NpcBase(NpcEntityTypes.NPC_BASE.get(), player.level());
@@ -91,9 +101,10 @@ public class NpcSpawnCommand {
         npc.setFaction(faction);
         player.level().addFreshEntity(npc);
 
+        String factionDisplay = faction != null ? faction.displayName() : "wilderness";
         source.sendSuccess(
                 () -> Component.literal("§a已在当前位置生成 NPC（职业：" + profession.getDisplayName()
-                        + "，阵营：" + faction.getDisplayName() + "）"),
+                        + "，阵营：" + factionDisplay + "）"),
                 true
         );
         return 1;

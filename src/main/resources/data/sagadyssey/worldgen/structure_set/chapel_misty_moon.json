@@ -1,0 +1,14 @@
+{
+    "structures": [
+        {
+            "structure": "sagadyssey:chapel_misty_moon",
+            "weight": 1
+        }
+    ],
+    "placement": {
+        "type": "minecraft:random_spread",
+        "salt": 2004,
+        "spacing": 60,
+        "separation": 40
+    }
+}

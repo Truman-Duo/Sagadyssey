@@ -1,0 +1,15 @@
+{
+  "id": "sagadyssey:merchant_guild",
+  
+  "display_name": "faction.sagadyssey.merchant_guild",
+  "color": 4286945,
+  "default_standing": 0,
+  "can_be_hostile": false,
+  "can_recruit": true,
+  "icon": "sagadyssey:textures/gui/faction/merchant_guild.png",
+  "gui_node_position": [220, 80],
+  "reputation_multiplier": 1.0,
+  "decay_enabled": true,
+  "decay_target": 0,
+  "decay_rate_per_day": 1
+}

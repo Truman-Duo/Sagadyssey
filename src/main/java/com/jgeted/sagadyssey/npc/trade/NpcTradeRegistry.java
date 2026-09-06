@@ -365,6 +365,15 @@ public class NpcTradeRegistry {
 
     /** 商人加价：提高 cost，降低 result */
     public static NpcTradeOffer applyMerchantMarkup(NpcTradeOffer original, double markupRate) {
+        return applyMerchantMarkup(original, markupRate, false);
+    }
+
+    /**
+     * 商人加价（可选跳过）。
+     * ignoreReputation=true 时原样返回，用于 player 阵营 NPC 与主人的交易。
+     */
+    public static NpcTradeOffer applyMerchantMarkup(NpcTradeOffer original, double markupRate, boolean ignoreReputation) {
+        if (ignoreReputation) return original;
         int newCostMin = Math.max(1, (int) Math.round(original.costMin() * (1.0 + markupRate)));
         int newCostMax = Math.max(1, (int) Math.round(original.costMax() * (1.0 + markupRate)));
         int newResultMin = Math.max(1, (int) Math.round(original.resultMin() * (1.0 - markupRate)));

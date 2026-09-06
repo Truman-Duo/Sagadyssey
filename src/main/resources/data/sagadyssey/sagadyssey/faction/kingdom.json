@@ -1,0 +1,15 @@
+{
+  "id": "sagadyssey:kingdom",
+  
+  "display_name": "faction.sagadyssey.kingdom",
+  "color": 16766720,
+  "default_standing": 0,
+  "can_be_hostile": true,
+  "can_recruit": true,
+  "icon": "sagadyssey:textures/gui/faction/kingdom.png",
+  "gui_node_position": [120, 80],
+  "reputation_multiplier": 1.0,
+  "decay_enabled": true,
+  "decay_target": 0,
+  "decay_rate_per_day": 1
+}

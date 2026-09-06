@@ -1,0 +1,15 @@
+{
+  "id": "sagadyssey:mystic",
+  
+  "display_name": "faction.sagadyssey.mystic",
+  "color": 10040012,
+  "default_standing": -40,
+  "can_be_hostile": false,
+  "can_recruit": true,
+  "icon": "sagadyssey:textures/gui/faction/mystic.png",
+  "gui_node_position": [170, 320],
+  "reputation_multiplier": 1.0,
+  "decay_enabled": true,
+  "decay_target": -40,
+  "decay_rate_per_day": 1
+}

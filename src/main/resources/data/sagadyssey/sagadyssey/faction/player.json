@@ -1,0 +1,14 @@
+{
+  "id": "sagadyssey:player",
+  "display_name": "faction.sagadyssey.player",
+  "color": 65280,
+  "default_standing": 100,
+  "can_be_hostile": false,
+  "can_recruit": false,
+  "icon": "sagadyssey:textures/gui/faction/player.png",
+  "gui_node_position": [200, 200],
+  "reputation_multiplier": 1.0,
+  "decay_enabled": false,
+  "decay_target": 100,
+  "decay_rate_per_day": 0
+}

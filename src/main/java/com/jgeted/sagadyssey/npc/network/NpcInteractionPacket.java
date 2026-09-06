@@ -5,6 +5,7 @@ import com.jgeted.sagadyssey.npc.container.NpcEquipMenuProvider;
 import com.jgeted.sagadyssey.npc.entity.NpcBase;
 import com.jgeted.sagadyssey.npc.entity.NpcCommand;
 import com.jgeted.sagadyssey.npc.faction.NpcFaction;
+import com.jgeted.sagadyssey.npc.profession.NpcProfession;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.StreamCodec;
@@ -12,6 +13,9 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Leashable;
+import net.minecraft.world.entity.animal.horse.AbstractHorse;
+import net.minecraft.world.entity.decoration.LeashFenceKnotEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -24,6 +28,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  *   "recruit"        — 确认招募（在招募界面点击 Hire 按钮）
  *   "follow"         — 命令 NPC 跟随
  *   "stay"           — 命令 NPC 原地待命
+ *   "work"           — 命令 NPC 开始工作（务农/伐木挖矿，按职业）
  */
 public record NpcInteractionPacket(int npcId, String action) implements CustomPacketPayload {
 
@@ -72,7 +77,15 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
                 case "recruit" -> handleRecruit(player, npc);
                 case "follow" -> handleCommand(player, npc, "follow");
                 case "stay" -> handleCommand(player, npc, "stay");
+                case "work" -> handleCommand(player, npc, "work");
                 case "open_equip" -> handleOpenEquip(player, npc);
+                case "unbind_mount" -> handleUnbindMount(player, npc);
+                case "request_mounts" -> handleRequestMounts(player, npc);
+                case "tether_mount" -> handleTetherMount(player, npc);
+                case "lead_mount" -> handleLeadMount(player, npc);
+                case "mount_up" -> handleMountUp(player, npc);
+                case "untether_mount" -> handleUntetherMount(player, npc);
+                case "dismiss" -> handleDismiss(player, npc);
                 default -> player.displayClientMessage(
                         Component.literal("§e未知操作：" + data.action), true);
             }
@@ -113,13 +126,15 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
         }
 
         int cost = npc.getRecruitmentCost();
-        if (npc.getFaction() == NpcFaction.HOSTILE) {
+        var faction = npc.getFaction();
+        boolean isHostileFaction = faction != null && faction.canBeHostile();
+        if (isHostileFaction) {
             cost *= 2;
         }
 
         // 检查玩家有没有足够绿宝石
         if (!hasEnoughEmeralds(player, cost)) {
-            String factionTag = npc.getFaction() == NpcFaction.HOSTILE ? "§c（敌对招募费用翻倍）" : "";
+            String factionTag = isHostileFaction ? "§c（敌对招募费用翻倍）" : "";
             player.displayClientMessage(
                     Component.literal("§c绿宝石不足！需要 " + cost + " 个绿宝石" + factionTag), true);
             return;
@@ -132,8 +147,10 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
             return;
         }
 
-        // 设置主人
+        // 设置主人（setOwner 内部已自动切阵营 + 保存原阵营）
         npc.setOwner(player.getUUID());
+        // 同步到客户端（招募后阵营变了，需刷新 GUI）
+        NpcStatsPayload.sync(npc);
 
         // 通知玩家
         player.displayClientMessage(
@@ -209,6 +226,14 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
                 player.displayClientMessage(
                         Component.literal("§a已命令 " + npcName + " 原地待命"), true);
             }
+            case "work" -> {
+                if (npc.getProfession() != NpcProfession.FARMER && npc.getProfession() != NpcProfession.WORKER) {
+                    player.displayClientMessage(Component.literal("§e这个职业不会工作"), true);
+                    return;
+                }
+                npc.setCommand(NpcCommand.WORK);
+                player.displayClientMessage(Component.literal("§a已命令 " + npcName + " 开始工作"), true);
+            }
         }
     }
 
@@ -225,5 +250,142 @@ public record NpcInteractionPacket(int npcId, String action) implements CustomPa
             return;
         }
         player.openMenu(new NpcEquipMenuProvider(npc), buf -> buf.writeInt(npc.getId()));
+    }
+
+    /**
+     * 处理解除坐骑绑定。
+     */
+    private static void handleUnbindMount(ServerPlayer player, NpcBase npc) {
+        if (!npc.isOwnedBy(player.getUUID())) {
+            player.displayClientMessage(Component.literal("§c这个 NPC 不属于你"), true);
+            return;
+        }
+        npc.unbindMount();
+        player.displayClientMessage(Component.literal("§a已解除坐骑绑定"), true);
+    }
+
+    /**
+     * 处理请求周围可用坐骑列表。
+     */
+    private static void handleRequestMounts(ServerPlayer player, NpcBase npc) {
+        if (!npc.isOwnedBy(player.getUUID())) {
+            player.displayClientMessage(Component.literal("§c这个 NPC 不属于你"), true);
+            return;
+        }
+        var mounts = new java.util.ArrayList<String>();
+        for (var horse : player.level().getEntitiesOfClass(AbstractHorse.class,
+                npc.getBoundingBox().inflate(10))) {
+            if (horse.isTamed() && horse.getOwnerUUID() != null
+                    && horse.getOwnerUUID().equals(player.getUUID())) {
+                mounts.add(String.format("%d|%s|%.0f/%.0f",
+                        horse.getId(), horse.getName().getString(),
+                        horse.getHealth(), horse.getMaxHealth()));
+            }
+        }
+        if (mounts.isEmpty()) {
+            player.displayClientMessage(Component.literal("§e附近没有可分配的坐骑"), false);
+        } else {
+            player.displayClientMessage(Component.literal("§a可用坐骑 (共" + mounts.size() + "匹):"), false);
+            for (String m : mounts) {
+                String[] parts = m.split("\\|");
+                player.displayClientMessage(Component.literal(
+                        String.format("  §f- %s (%s HP)  §7/saga mount bind %d %s",
+                                parts[1], parts[2], npc.getId(), parts[0])), false);
+            }
+        }
+    }
+
+    private static void handleTetherMount(ServerPlayer player, NpcBase npc) {
+        if (!npc.isOwnedBy(player.getUUID())) return;
+        if (!npc.hasMount()) {
+            player.displayClientMessage(Component.literal("§e没有绑定坐骑"), true);
+            return;
+        }
+        if (npc.tetherHorse()) {
+            if (npc.isPassenger()) npc.dismountToBind();
+            npc.setLeadMountMode(true);
+            player.displayClientMessage(Component.literal("§a已拴在附近栅栏上"), true);
+        } else {
+            player.displayClientMessage(Component.literal("§c附近没有栅栏或缺少栓绳"), true);
+        }
+    }
+
+    private static void handleLeadMount(ServerPlayer player, NpcBase npc) {
+        if (!npc.isOwnedBy(player.getUUID())) return;
+        if (!npc.hasMount()) {
+            player.displayClientMessage(Component.literal("§e没有绑定坐骑"), true);
+            return;
+        }
+        npc.untetherHorse();
+        if (npc.isPassenger()) npc.dismountToBind();
+        // 把马拴到 NPC 身上，体现"牵马"视觉效果
+        Entity mount = npc.getMount();
+        if (mount instanceof Leashable leashable && !leashable.isLeashed()) {
+            leashable.setLeashedTo(npc, true);
+        }
+        npc.setLeadMountMode(true);
+        player.displayClientMessage(Component.literal("§a已下马，切换为牵马步行"), true);
+    }
+
+    /**
+     * 处理上马：从牵马/拴马状态恢复骑行。
+     * 不直接 startRiding，而是设置 pendingMount 标记，
+     * 让 MountGoal 驱动 NPC 走向坐骑后再上马。
+     */
+    private static void handleMountUp(ServerPlayer player, NpcBase npc) {
+        if (!npc.isOwnedBy(player.getUUID())) return;
+        if (!npc.hasMount()) {
+            player.displayClientMessage(Component.literal("§e没有绑定坐骑"), true);
+            return;
+        }
+        Entity mount = npc.getMount();
+        if (mount == null || !mount.isAlive()) {
+            player.displayClientMessage(Component.literal("§c坐骑已死亡或丢失"), true);
+            return;
+        }
+        // 解拴，如果是栅栏栓绳则回收（拴栅栏时消耗了一根）
+        if (mount instanceof Leashable leashable && leashable.isLeashed()) {
+            if (leashable.getLeashHolder() instanceof LeashFenceKnotEntity) {
+                npc.addLeadToInventory();
+            }
+            leashable.dropLeash(true, false);
+        }
+        // 如果 NPC 已经是乘客，先下马（防止重复）
+        if (npc.isPassenger()) {
+            npc.stopRiding();
+        }
+        npc.setLeadMountMode(false);
+        // 设置标记，让 MountGoal 接管导航和上马
+        npc.setPendingMount();
+        player.displayClientMessage(Component.literal("§aNPC 正走向坐骑…"), true);
+    }
+
+    /**
+     * 处理解除拴马：把马从栅栏上解下来，回收栓绳。
+     */
+    private static void handleUntetherMount(ServerPlayer player, NpcBase npc) {
+        if (!npc.isOwnedBy(player.getUUID())) return;
+        if (!npc.hasMount()) {
+            player.displayClientMessage(Component.literal("§e没有绑定坐骑"), true);
+            return;
+        }
+        npc.untetherHorse();
+        npc.addLeadToInventory(); // 拴栅栏时消耗了一根，这里回收
+        npc.setLeadMountMode(false);
+        player.displayClientMessage(Component.literal("§a已解除拴马，栓绳已放回背包"), true);
+    }
+
+    /**
+     * 处理解散：将已招募 NPC 恢复原阵营、清除主人。
+     */
+    private static void handleDismiss(ServerPlayer player, NpcBase npc) {
+        if (!npc.isOwnedBy(player.getUUID())) return;
+        String oldOriginal = npc.getOriginalFaction();
+        npc.dismiss();
+        // 同步到客户端（阵营变了，需刷新 GUI）
+        NpcStatsPayload.sync(npc);
+        String backTo = oldOriginal != null ? oldOriginal : "sagadyssey:wilderness";
+        player.displayClientMessage(
+                Component.literal("§a已解散 NPC，它回到了 " + backTo + " 阵营"), true);
     }
 }

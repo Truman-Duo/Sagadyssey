@@ -1,6 +1,7 @@
 package com.jgeted.sagadyssey.npc.gui;
 
-import com.jgeted.sagadyssey.npc.faction.NpcFaction;
+import com.jgeted.sagadyssey.npc.faction.Faction;
+import com.jgeted.sagadyssey.npc.faction.FactionRegistry;
 import com.jgeted.sagadyssey.npc.network.NpcInteractionPacket;
 import com.jgeted.sagadyssey.npc.network.NpcStatsPayload;
 import com.jgeted.sagadyssey.npc.trade.NpcTradeOffer;
@@ -71,10 +72,11 @@ public class NpcRecruitScreen extends Screen {
         this.panelLeft = (this.width - PANEL_WIDTH) / 2;
         this.panelTop = (this.height - PANEL_HEIGHT) / 2;
 
-        NpcFaction faction = NpcFaction.valueOf(factionName);
+        Faction faction = FactionRegistry.get(factionName);
+        boolean isHostile = faction != null && faction.canBeHostile();
 
         // 友好/中立 NPC 可以交易
-        if (faction != NpcFaction.HOSTILE) {
+        if (!isHostile) {
             int tradeBtnW = 76;
             int tradeBtnX = panelLeft + (PANEL_WIDTH - tradeBtnW) / 2;
             int tradeBtnY = panelTop + 106;
@@ -133,13 +135,14 @@ public class NpcRecruitScreen extends Screen {
         graphics.fill(panelLeft + 8, panelTop + 36, panelLeft + PANEL_WIDTH - 8, panelTop + 37, 0x55_AA5500);
 
         // === 阵营 ===
-        NpcFaction faction = NpcFaction.valueOf(factionName);
-        Component factionComp = Component.literal("阵营：" + faction.getDisplayName());
-        int factionColor = switch (faction) {
-            case HOSTILE -> 0xFF_FF5555;
-            case NEUTRAL -> 0xFF_FFFF55;
-            case FRIENDLY -> 0xFF_55FF55;
-        };
+        Faction faction = FactionRegistry.get(factionName);
+        String factionDisplayName = faction != null ? getFactionDisplayName(faction) : factionName;
+        // player 阵营 NPC 显示 "(已招募)"
+        if ("sagadyssey:player".equals(factionName)) {
+            factionDisplayName += Component.translatable("gui.sagadyssey.recruited").getString();
+        }
+        int factionColor = faction != null ? faction.color() : 0xFF_FFFF55;
+        Component factionComp = Component.literal("阵营：" + factionDisplayName);
         int factionX = panelLeft + (PANEL_WIDTH - font.width(factionComp)) / 2;
         graphics.drawString(font, factionComp, factionX, panelTop + 42, factionColor);
 
@@ -180,12 +183,23 @@ public class NpcRecruitScreen extends Screen {
         return false;
     }
 
-    /**
-     * 覆盖原版背景渲染为空操作。
-     * 我们在 render() 中手动绘制半透明遮罩，避免 super.render() 二次绘制时盖掉面板。
-     */
+    /** 覆盖原版背景渲染为空操作 */
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // 不绘制原版背景，面板自身提供深色背景
+    }
+
+    /** 获取阵营显示名（fallback） */
+    private static String getFactionDisplayName(Faction faction) {
+        return switch (faction.id()) {
+            case "sagadyssey:kingdom" -> "王国卫队";
+            case "sagadyssey:merchant_guild" -> "商会联盟";
+            case "sagadyssey:church" -> "圣殿教团";
+            case "sagadyssey:dwarven" -> "矮人部族";
+            case "sagadyssey:mystic" -> "秘法学会";
+            case "sagadyssey:wilderness" -> "荒野流民";
+            case "sagadyssey:bandit" -> "劫掠者";
+            default -> faction.displayName();
+        };
     }
 }

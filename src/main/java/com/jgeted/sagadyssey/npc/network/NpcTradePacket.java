@@ -2,6 +2,8 @@ package com.jgeted.sagadyssey.npc.network;
 
 import com.jgeted.sagadyssey.Sagadyssey;
 import com.jgeted.sagadyssey.npc.entity.NpcBase;
+import com.jgeted.sagadyssey.npc.faction.Faction;
+import com.jgeted.sagadyssey.npc.faction.StandingModifier;
 import com.jgeted.sagadyssey.npc.profession.NpcProfession;
 import com.jgeted.sagadyssey.npc.trade.NpcTradeOffer;
 import com.jgeted.sagadyssey.npc.trade.NpcTradeRegistry;
@@ -104,6 +106,12 @@ public record NpcTradePacket(int npcId, int tradeIndex) implements CustomPacketP
                 xpGain = (int) (xpGain * 1.25);
             }
             npc.addExperience(xpGain);
+
+            // 交易增加阵营声望（+1）
+            Faction npcFaction = npc.getFaction();
+            if (npcFaction != null) {
+                StandingModifier.applyModification(player, npcFaction, 1, "standing.reason.trade");
+            }
 
             // 回传新经验给客户端，驱动 GUI 刷新
             PacketDistributor.sendToPlayer(player,

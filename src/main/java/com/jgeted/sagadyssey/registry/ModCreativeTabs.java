@@ -20,6 +20,7 @@ public final class ModCreativeTabs {
                     .icon(() -> new ItemStack(ModBlocks.TEST_BLOCK.get()))
                     .displayItems((params, output) -> {
                         output.accept(ModBlocks.TEST_BLOCK.get());
+                        output.accept(ModItems.NPC_COMMAND_WAND.get());
                     })
                     .build());
 }

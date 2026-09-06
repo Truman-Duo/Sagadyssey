@@ -1,0 +1,26 @@
+{
+  "id": "chapel_misty_moon",
+  "nbt": "sagadyssey:chapel_misty_moon",
+  "name": "雾月小教堂",
+  "category": "church",
+  "size": "large",
+
+  "biomes": "#sagadyssey:has_church",
+  "step": "surface_structures",
+
+  "terrain_adaptation": "beard_thin",
+
+  "start_height": {
+    "type": "uniform",
+    "min_inclusive": { "absolute": 62 },
+    "max_inclusive": { "absolute": 100 }
+  },
+
+  "spacing": 60,
+  "separation": 40,
+  "max_distance_from_center": 100,
+
+  "weight": 5,
+  "allow_underground": false,
+  "allow_water": false
+}

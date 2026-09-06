@@ -1,6 +1,64 @@
 {
   "block.sagadyssey.test_block": "Test Block",
   "itemGroup.sagadyssey.sagadyssey_tab": "Sagadyssey",
+  "item.sagadyssey.npc_command_wand": "Command Wand",
   "key.categories.sagadyssey": "Sagadyssey",
-  "key.sagadyssey.research": "Open Skill Tree"
+  "key.sagadyssey.research": "Open Skill Tree",
+  "key.sagadyssey.reputation": "Open Faction Reputation",
+
+  "faction.sagadyssey.kingdom": "Kingdom Guard",
+  "faction.sagadyssey.merchant_guild": "Merchant Guild",
+  "faction.sagadyssey.church": "Holy Order",
+  "faction.sagadyssey.dwarven": "Dwarven Clan",
+  "faction.sagadyssey.mystic": "Arcane Society",
+  "faction.sagadyssey.wilderness": "Wilderness Wanderers",
+  "faction.sagadyssey.bandit": "Bandits",
+  "faction.sagadyssey.player": "Player Faction",
+
+  "gui.sagadyssey.recruited": " (Recruited)",
+  "gui.sagadyssey.dismiss": "Dismiss",
+
+  "standing.sagadyssey.revered": "Revered",
+  "standing.sagadyssey.honored": "Honored",
+  "standing.sagadyssey.neutral": "Neutral",
+  "standing.sagadyssey.cold": "Cold",
+  "standing.sagadyssey.hated": "Hated",
+
+  "relation.sagadyssey.ally": "Ally",
+  "relation.sagadyssey.friendly": "Friendly",
+  "relation.sagadyssey.neutral": "Neutral",
+  "relation.sagadyssey.distrustful": "Distrustful",
+  "relation.sagadyssey.enemy": "Enemy",
+
+  "title.sagadyssey.kingdom": "Knight of the Realm",
+  "title.sagadyssey.merchant_guild": "Guild Master",
+  "title.sagadyssey.church": "Blessed One",
+  "title.sagadyssey.dwarven": "Dwarf-Friend",
+  "title.sagadyssey.mystic": "Arcane Adept",
+  "title.sagadyssey.wilderness": "Wildwalker",
+
+  "gui.sagadyssey.reputation.title": "Faction Reputation",
+  "gui.sagadyssey.reputation.no_data": "No faction data available",
+
+  "standing.reason.killed_npc": "Killed NPC",
+  "standing.reason.trade": "Trade",
+  "standing.reason.donate": "Donation",
+  "standing.reason.rescue": "Rescued NPC",
+  "standing.reason.slept_in_wilderness": "Slept in wilderness",
+  "standing.reason.showed_loyalty_to_civilized": "Allied with civilized faction",
+  "standing.reason.ripple": "Ripple effect",
+  "standing.reason.command": "Command",
+  "standing.reason.decay": "Standing decay",
+
+  "command.sagadyssey.faction.list": "List all factions",
+  "command.sagadyssey.faction.get": "Check standing",
+  "command.sagadyssey.faction.set": "Set standing",
+  "command.sagadyssey.faction.reset": "Reset all standings",
+
+  "faction.kingdom.honored": "May the Kingdom's light guide your path.",
+  "faction.kingdom.neutral": "Stranger, respect the Kingdom's laws.",
+  "faction.kingdom.cold": "I find your recent actions... concerning.",
+  "faction.church.honored": "Blessed be your path, faithful one.",
+  "faction.church.cold": "Your deeds stray from the light of the Word.",
+  "faction.bandit.hated": "This road is closed, outsider!"
 }

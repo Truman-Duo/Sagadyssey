@@ -1,4 +1,62 @@
 {
   "key.categories.sagadyssey": "Sagadyssey",
-  "key.sagadyssey.research": "打开技能树"
+  "key.sagadyssey.research": "打开技能树",
+  "key.sagadyssey.reputation": "打开阵营声望",
+  "item.sagadyssey.npc_command_wand": "指挥杖",
+
+  "faction.sagadyssey.kingdom": "王国卫队",
+  "faction.sagadyssey.merchant_guild": "商会联盟",
+  "faction.sagadyssey.church": "圣殿教团",
+  "faction.sagadyssey.dwarven": "矮人部族",
+  "faction.sagadyssey.mystic": "秘法学会",
+  "faction.sagadyssey.wilderness": "荒野流民",
+  "faction.sagadyssey.bandit": "劫掠者",
+  "faction.sagadyssey.player": "玩家阵营",
+
+  "gui.sagadyssey.recruited": " (已招募)",
+  "gui.sagadyssey.dismiss": "解散",
+
+  "standing.sagadyssey.revered": "崇拜",
+  "standing.sagadyssey.honored": "尊敬",
+  "standing.sagadyssey.neutral": "中立",
+  "standing.sagadyssey.cold": "冷淡",
+  "standing.sagadyssey.hated": "仇恨",
+
+  "relation.sagadyssey.ally": "盟友",
+  "relation.sagadyssey.friendly": "友好",
+  "relation.sagadyssey.neutral": "中立",
+  "relation.sagadyssey.distrustful": "猜忌",
+  "relation.sagadyssey.enemy": "敌对",
+
+  "title.sagadyssey.kingdom": "王国骑士",
+  "title.sagadyssey.merchant_guild": "行会大师",
+  "title.sagadyssey.church": "受祝者",
+  "title.sagadyssey.dwarven": "矮人之友",
+  "title.sagadyssey.mystic": "秘法达人",
+  "title.sagadyssey.wilderness": "荒野行者",
+
+  "gui.sagadyssey.reputation.title": "阵营声望",
+  "gui.sagadyssey.reputation.no_data": "暂无阵营数据",
+
+  "standing.reason.killed_npc": "击杀NPC",
+  "standing.reason.trade": "交易",
+  "standing.reason.donate": "捐赠",
+  "standing.reason.rescue": "解救NPC",
+  "standing.reason.slept_in_wilderness": "荒野留宿",
+  "standing.reason.showed_loyalty_to_civilized": "示好文明阵营",
+  "standing.reason.ripple": "涟漪效应",
+  "standing.reason.command": "指令设置",
+  "standing.reason.decay": "声望衰减",
+
+  "command.sagadyssey.faction.list": "列出所有阵营",
+  "command.sagadyssey.faction.get": "查看声望",
+  "command.sagadyssey.faction.set": "设置声望",
+  "command.sagadyssey.faction.reset": "重置声望",
+
+  "faction.kingdom.honored": "愿王国之光指引你的道路。",
+  "faction.kingdom.neutral": "陌生人，请遵守王国法律。",
+  "faction.kingdom.cold": "我对你的举动感到不满。",
+  "faction.church.honored": "愿圣光护佑你，虔诚之人。",
+  "faction.church.cold": "你的行为背离了圣言之光。",
+  "faction.bandit.hated": "此路不通，外来者！"
 }

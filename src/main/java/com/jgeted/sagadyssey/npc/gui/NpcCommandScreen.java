@@ -2,6 +2,7 @@ package com.jgeted.sagadyssey.npc.gui;
 
 import com.jgeted.sagadyssey.npc.network.NpcInteractionPacket;
 import com.jgeted.sagadyssey.npc.network.NpcStatsPayload;
+import com.jgeted.sagadyssey.npc.profession.NpcProfession;
 import com.jgeted.sagadyssey.npc.trade.NpcTradeOffer;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -32,11 +33,22 @@ public class NpcCommandScreen extends Screen {
     private final int kills;
     private final int moral;
     private final String commandName;
+    private final String farmModeName;
 
     private final List<NpcTradeOffer> trades;
 
+    // 坐骑数据
+    private final boolean hasMount;
+    private final int mountType;
+    private final float mountHp;
+    private final float mountMaxHp;
+    private final float mountSpeed;
+    private final String mountName;
+    private final boolean leadMountMode;
+    private final boolean mountLeashed;
+
     private static final int PANEL_WIDTH = 176;
-    private static final int PANEL_HEIGHT = 196;
+    private static final int PANEL_HEIGHT = 248;
 
     private int panelLeft;
     private int panelTop;
@@ -56,7 +68,16 @@ public class NpcCommandScreen extends Screen {
         this.kills = data.kills();
         this.moral = data.moral();
         this.commandName = data.commandName();
+        this.farmModeName = data.farmModeName();
         this.trades = data.buildTrades();
+        this.hasMount = data.hasMount();
+        this.mountType = data.mountType();
+        this.mountHp = data.mountHp();
+        this.mountMaxHp = data.mountMaxHp();
+        this.mountSpeed = data.mountSpeed();
+        this.mountName = data.mountName();
+        this.leadMountMode = data.leadMountMode();
+        this.mountLeashed = data.mountLeashed();
     }
 
     @Override
@@ -71,14 +92,40 @@ public class NpcCommandScreen extends Screen {
         int btnY1 = panelTop + 110;
         int btnY2 = panelTop + 138;
 
+        // 第一行：跟随 / 工作 / 待命（三按钮）
+        int workBtnW = 48;
+        int btn2X = leftX + workBtnW + 6;
+        int btn3X = btn2X + workBtnW + 6;
+
         addRenderableWidget(Button.builder(
                 Component.literal("跟随我" + (commandName.equals("FOLLOW") ? " ✓" : "")),
                 btn -> {
                     PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "follow"));
                     this.onClose();
                 })
-                .bounds(leftX, btnY1, btnW, 20)
+                .bounds(leftX, btnY1, workBtnW, 20)
                 .build());
+
+        // 工作按钮：农民→务农（打开务农模式面板），工人→干活，其余职业置灰
+        NpcProfession prof = NpcProfession.fromDisplayName(professionName);
+        boolean canWork = prof == NpcProfession.FARMER || prof == NpcProfession.WORKER;
+        String workLabel = prof == NpcProfession.FARMER ? "务农"
+                : prof == NpcProfession.WORKER ? "干活" : "工作";
+        Button workBtn = Button.builder(
+                Component.literal(workLabel + (commandName.equals("WORK") ? " ✓" : "")),
+                btn -> {
+                    if (prof == NpcProfession.FARMER) {
+                        // 农民：弹出务农模式面板，选完模式再开始工作
+                        this.minecraft.setScreen(new NpcFarmModeScreen(npcId, npcName, farmModeName));
+                    } else {
+                        PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "work"));
+                        this.onClose();
+                    }
+                })
+                .bounds(btn2X, btnY1, workBtnW, 20)
+                .build();
+        workBtn.active = canWork; // 非工作职业置灰
+        addRenderableWidget(workBtn);
 
         addRenderableWidget(Button.builder(
                 Component.literal("原地待命" + (commandName.equals("STAY") ? " ✓" : "")),
@@ -86,7 +133,7 @@ public class NpcCommandScreen extends Screen {
                     PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "stay"));
                     this.onClose();
                 })
-                .bounds(rightX, btnY1, btnW, 20)
+                .bounds(btn3X, btnY1, workBtnW, 20)
                 .build());
 
         addRenderableWidget(Button.builder(
@@ -106,7 +153,7 @@ public class NpcCommandScreen extends Screen {
                 .bounds(rightX, btnY2, btnW, 20)
                 .build());
 
-        // 第三行：交易
+        // 第三行：交易 + 坐骑
         int btnY3 = panelTop + 166;
         addRenderableWidget(Button.builder(
                 Component.literal("交易"),
@@ -116,11 +163,58 @@ public class NpcCommandScreen extends Screen {
                 .bounds(leftX, btnY3, btnW, 20)
                 .build());
 
+        addRenderableWidget(Button.builder(
+                Component.literal(hasMount ? "管理坐骑" : "分配坐骑"),
+                btn -> {
+                    if (hasMount) {
+                        PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "unbind_mount"));
+                    } else {
+                        PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "request_mounts"));
+                    }
+                    this.onClose();
+                })
+                .bounds(rightX, btnY3, btnW, 20)
+                .build());
+
+        // 第四行：拴马/解除拴马 + 上马/牵马（仅在有坐骑时显示）
+        if (hasMount) {
+            int btnY4 = panelTop + 194;
+            addRenderableWidget(Button.builder(
+                    Component.literal(mountLeashed ? "解除拴马" : "拴在栅栏"),
+                    btn -> {
+                        PacketDistributor.sendToServer(new NpcInteractionPacket(npcId,
+                                mountLeashed ? "untether_mount" : "tether_mount"));
+                        this.onClose();
+                    })
+                    .bounds(leftX, btnY4, btnW, 20)
+                    .build());
+
+            addRenderableWidget(Button.builder(
+                    Component.literal(leadMountMode ? "上马" : "牵马步行"),
+                    btn -> {
+                        PacketDistributor.sendToServer(new NpcInteractionPacket(npcId,
+                                leadMountMode ? "mount_up" : "lead_mount"));
+                        this.onClose();
+                    })
+                    .bounds(rightX, btnY4, btnW, 20)
+                    .build());
+        }
+
         // × 关闭按钮
         addRenderableWidget(Button.builder(
                 Component.literal("✕").withStyle(s -> s.withColor(0xFF_FF5555)),
                 btn -> this.onClose())
                 .bounds(panelLeft + PANEL_WIDTH - 20, panelTop + 4, 16, 16)
+                .build());
+
+        // 解散按钮（恢复原阵营、清除主人）
+        addRenderableWidget(Button.builder(
+                Component.literal("解散"),
+                btn -> {
+                    PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "dismiss"));
+                    this.onClose();
+                })
+                .bounds(panelLeft + 10, panelTop + PANEL_HEIGHT - 28, PANEL_WIDTH - 20, 20)
                 .build());
     }
 
@@ -169,6 +263,31 @@ public class NpcCommandScreen extends Screen {
 
         drawStat(graphics, colX1, rowY, "护甲", String.format("%.1f", armor), 0xFF_AAAAFF);
         drawStat(graphics, colX2, rowY, "士气", moral + " / 100", 0xFF_FF88FF);
+
+        // 坐骑信息区域
+        int mountY = panelTop + 190;
+        graphics.fill(panelLeft + 8, mountY, panelLeft + PANEL_WIDTH - 8, mountY + 24, 0x33_000000);
+        if (hasMount) {
+            String typeName = switch (mountType) {
+                case 2 -> "驴";
+                case 3 -> "骡";
+                case 4 -> "骆驼";
+                default -> "马";
+            };
+            graphics.drawString(font, "坐骑: " + typeName + " (" + mountName + ")",
+                    panelLeft + 14, mountY + 2, 0xFF_FFAA00);
+            float hpRatio = mountMaxHp > 0 ? mountHp / mountMaxHp : 0;
+            int barW = 60;
+            int barX = panelLeft + 14;
+            int barY = mountY + 14;
+            graphics.fill(barX, barY, barX + barW, barY + 5, 0x55_000000);
+            graphics.fill(barX, barY, barX + (int)(barW * hpRatio), barY + 5, 0xFF_00AA00);
+            graphics.drawString(font, String.format("%.0f/%.0f", mountHp, mountMaxHp),
+                    barX + barW + 4, barY - 1, 0xFF_88FF88);
+        } else {
+            graphics.drawString(font, "坐骑: 无（牵马右键 NPC 分配）",
+                    panelLeft + 14, mountY + 6, 0xFF_888888);
+        }
 
         super.render(graphics, mouseX, mouseY, partialTick);
     }

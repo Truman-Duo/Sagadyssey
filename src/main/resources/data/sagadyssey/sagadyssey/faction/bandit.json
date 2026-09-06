@@ -1,0 +1,15 @@
+{
+  "id": "sagadyssey:bandit",
+  
+  "display_name": "faction.sagadyssey.bandit",
+  "color": 14423100,
+  "default_standing": -100,
+  "can_be_hostile": true,
+  "can_recruit": false,
+  "icon": "sagadyssey:textures/gui/faction/bandit.png",
+  "gui_node_position": [280, 200],
+  "reputation_multiplier": 1.0,
+  "decay_enabled": true,
+  "decay_target": -100,
+  "decay_rate_per_day": 1
+}

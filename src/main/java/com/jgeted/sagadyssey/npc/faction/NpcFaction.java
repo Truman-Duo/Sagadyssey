@@ -1,11 +1,14 @@
 package com.jgeted.sagadyssey.npc.faction;
 
 /**
- * NPC 阵营。
- * HOSTILE: 主动攻击非主人的玩家，可高价招募
- * NEUTRAL: 不攻击，可正常招募
- * FRIENDLY: 不攻击，可正常招募（好感度系统后续接入）
+ * NPC 阵营（旧版枚举，仅用于 NBT 向后兼容）。
+ * <p>
+ * 新代码应使用 {@link Faction} record 和 {@link FactionRegistry}，
+ * 而非此枚举。此枚举保留仅为读取旧存档中已保存的 NPC 阵营标签。
+ *
+ * @deprecated 请使用 {@link Faction} 和 {@link FactionRegistry} 替代。
  */
+@Deprecated
 public enum NpcFaction {
     HOSTILE("敌对"),
     NEUTRAL("中立"),

@@ -1,0 +1,15 @@
+{
+  "id": "sagadyssey:wilderness",
+  
+  "display_name": "faction.sagadyssey.wilderness",
+  "color": 9140053,
+  "default_standing": 0,
+  "can_be_hostile": false,
+  "can_recruit": true,
+  "icon": "sagadyssey:textures/gui/faction/wilderness.png",
+  "gui_node_position": [60, 200],
+  "reputation_multiplier": 1.0,
+  "decay_enabled": true,
+  "decay_target": 0,
+  "decay_rate_per_day": 1
+}

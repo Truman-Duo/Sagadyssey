@@ -1,0 +1,15 @@
+{
+  "id": "sagadyssey:dwarven",
+  
+  "display_name": "faction.sagadyssey.dwarven",
+  "color": 10501165,
+  "default_standing": 0,
+  "can_be_hostile": false,
+  "can_recruit": true,
+  "icon": "sagadyssey:textures/gui/faction/dwarven.png",
+  "gui_node_position": [220, 200],
+  "reputation_multiplier": 1.0,
+  "decay_enabled": true,
+  "decay_target": 0,
+  "decay_rate_per_day": 1
+}
