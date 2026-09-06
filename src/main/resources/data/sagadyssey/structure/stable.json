@@ -1,0 +1,26 @@
+{
+  "id": "stable",
+  "nbt": "sagadyssey:stable",
+  "name": "马厩",
+  "category": "stable",
+  "size": "large",
+
+  "biomes": "#sagadyssey:has_stable",
+  "step": "surface_structures",
+
+  "terrain_adaptation": "beard_thin",
+
+  "start_height": {
+    "type": "uniform",
+    "min_inclusive": { "absolute": 62 },
+    "max_inclusive": { "absolute": 100 }
+  },
+
+  "spacing": 40,
+  "separation": 20,
+  "max_distance_from_center": 80,
+
+  "weight": 3,
+  "allow_underground": false,
+  "allow_water": false
+}

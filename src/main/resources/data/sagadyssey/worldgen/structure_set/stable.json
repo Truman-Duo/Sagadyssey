@@ -1,0 +1,14 @@
+{
+    "structures": [
+        {
+            "structure": "sagadyssey:stable",
+            "weight": 1
+        }
+    ],
+    "placement": {
+        "type": "minecraft:random_spread",
+        "salt": 3001,
+        "spacing": 40,
+        "separation": 20
+    }
+}

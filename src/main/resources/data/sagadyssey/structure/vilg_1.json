@@ -1,0 +1,26 @@
+{
+  "id": "vilg_1",
+  "nbt": "sagadyssey:vilg_1",
+  "name": "村庄一",
+  "category": "village",
+  "size": "small",
+
+  "biomes": "#sagadyssey:has_village",
+  "step": "surface_structures",
+
+  "terrain_adaptation": "beard_thin",
+
+  "start_height": {
+    "type": "uniform",
+    "min_inclusive": { "absolute": 62 },
+    "max_inclusive": { "absolute": 100 }
+  },
+
+  "spacing": 24,
+  "separation": 12,
+  "max_distance_from_center": 80,
+
+  "weight": 2,
+  "allow_underground": false,
+  "allow_water": false
+}

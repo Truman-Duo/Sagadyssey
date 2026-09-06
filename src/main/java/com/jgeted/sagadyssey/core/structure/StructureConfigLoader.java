@@ -36,7 +36,12 @@ public final class StructureConfigLoader {
         "house_cottage_medium",
         "house_cottage_large",
         "watchtower_stone_large",
-        "chapel_misty_moon"
+        "chapel_misty_moon",
+        "forge",
+        "stable",
+        "vilg_1",
+        "vilg_2",
+        "wallgate"
     );
 
     /**

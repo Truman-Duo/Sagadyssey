@@ -6,6 +6,7 @@
         "ChunkGeneratorStructureStateMixin",
         "JigsawPlacementMixin",
         "StructureMixin",
+        "StructureCollisionMixin",
         "AbstractHorsePassengerMixin",
         "CocoaBlockMixin"
     ],

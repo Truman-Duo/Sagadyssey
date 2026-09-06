@@ -1,0 +1,26 @@
+{
+  "id": "wallgate",
+  "nbt": "sagadyssey:wallgate",
+  "name": "城墙门",
+  "category": "wall",
+  "size": "medium",
+
+  "biomes": "#sagadyssey:has_wallgate",
+  "step": "surface_structures",
+
+  "terrain_adaptation": "beard_thin",
+
+  "start_height": {
+    "type": "uniform",
+    "min_inclusive": { "absolute": 62 },
+    "max_inclusive": { "absolute": 100 }
+  },
+
+  "spacing": 48,
+  "separation": 24,
+  "max_distance_from_center": 80,
+
+  "weight": 3,
+  "allow_underground": false,
+  "allow_water": false
+}
