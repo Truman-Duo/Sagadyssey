@@ -1,0 +1,14 @@
+{
+    "structures": [
+        {
+            "structure": "sagadyssey:wallgate",
+            "weight": 1
+        }
+    ],
+    "placement": {
+        "type": "minecraft:random_spread",
+        "salt": 3003,
+        "spacing": 48,
+        "separation": 24
+    }
+}
