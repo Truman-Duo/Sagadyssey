@@ -38,6 +38,7 @@ import net.minecraft.world.entity.decoration.LeashFenceKnotEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
@@ -110,6 +111,9 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
 
     /** 当前行为指令 */
     private NpcCommand command = NpcCommand.IDLE;
+
+    /** 农民务农模式（仅 FARMER 使用） */
+    private FarmMode farmMode = FarmMode.AUTO;
 
     /** 框选中的工作范围第一角（未完成） */
     private BlockPos workZoneCorner1 = null;
@@ -579,6 +583,9 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
 
     public NpcCommand getCommand() { return command; }
     public void setCommand(NpcCommand command) { this.command = command; }
+
+    public FarmMode getFarmMode() { return farmMode; }
+    public void setFarmMode(FarmMode mode) { this.farmMode = mode; }
 
     /** 标记工作范围第一角（玩家脚下） */
     public void markWorkZoneCorner1(BlockPos pos) {
@@ -1192,6 +1199,8 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
                 equipmentInventory.setItem(2, new ItemStack(Items.POTATO, 4));
                 equipmentInventory.setItem(3, new ItemStack(Items.BEETROOT_SEEDS, 4));
                 equipmentInventory.setItem(4, new ItemStack(Items.BREAD, 2));
+                equipmentInventory.setItem(5, new ItemStack(Items.MELON_SEEDS, 4));
+                equipmentInventory.setItem(6, new ItemStack(Items.PUMPKIN_SEEDS, 4));
             }
             case BARD -> {
                 equipmentInventory.setItem(0, new ItemStack(Items.BREAD, 4));
@@ -1232,6 +1241,17 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
         return (int) this.getAttributeValue(Attributes.ARMOR);
     }
 
+    /**
+     * 原版 Mob.leashTooFarBehaviour 在绳断后会永久禁用 MOVE 标志，
+     * 所有移动类 goal（含 FarmerWorkGoal）从此不再被轮询，NPC 原地冻结。
+     * NPC 移动由命令系统驱动，不需要这个行为：绳断后立刻恢复 MOVE。
+     */
+    @Override
+    public void leashTooFarBehaviour() {
+        super.leashTooFarBehaviour();
+        this.goalSelector.enableControlFlag(Goal.Flag.MOVE);
+    }
+
     // === AI Goals ===
 
     @Override
@@ -1244,9 +1264,25 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
         this.goalSelector.addGoal(2, new com.jgeted.sagadyssey.npc.ai.FollowOwnerGoal(this, 1.0D, 3.0F, 64.0F));
         this.goalSelector.addGoal(2, new com.jgeted.sagadyssey.npc.ai.FarmerWorkGoal(this));
         this.goalSelector.addGoal(2, new com.jgeted.sagadyssey.npc.ai.WorkerWorkGoal(this));
-        this.goalSelector.addGoal(3, new RandomStrollGoal(this, 1.0D));
-        this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));
+        // 待机 goal 只在 IDLE 命令下允许启动，WORK/FOLLOW/STAY 时完全不参与，避免抢占 MOVE/LOOK 挡住工作 goal
+        this.goalSelector.addGoal(3, new RandomStrollGoal(this, 1.0D) {
+            @Override
+            public boolean canUse() {
+                return NpcBase.this.getCommand() == NpcCommand.IDLE && super.canUse();
+            }
+        });
+        this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0F) {
+            @Override
+            public boolean canUse() {
+                return NpcBase.this.getCommand() == NpcCommand.IDLE && super.canUse();
+            }
+        });
+        this.goalSelector.addGoal(5, new RandomLookAroundGoal(this) {
+            @Override
+            public boolean canUse() {
+                return NpcBase.this.getCommand() == NpcCommand.IDLE && super.canUse();
+            }
+        });
         this.goalSelector.addGoal(6, new com.jgeted.sagadyssey.npc.ai.NpcOpenDoorGoal(this));
         this.targetSelector.addGoal(0, combatGoal = new com.jgeted.sagadyssey.npc.ai.NpcCombatGoal(this));
     }
@@ -1388,6 +1424,7 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
         tag.putInt("Moral", this.moral);
         tag.putInt("RecruitmentCost", this.recruitmentCost);
         tag.putString("NpcCommand", this.command.name());
+        tag.putString("FarmMode", this.farmMode.name());
         if (this.workZoneMin != null && this.workZoneMax != null) {
             tag.putIntArray("WorkZoneMin", new int[]{workZoneMin.getX(), workZoneMin.getY(), workZoneMin.getZ()});
             tag.putIntArray("WorkZoneMax", new int[]{workZoneMax.getX(), workZoneMax.getY(), workZoneMax.getZ()});
@@ -1496,6 +1533,13 @@ public class NpcBase extends PathfinderMob implements IFactionInteractable {
                 this.command = NpcCommand.valueOf(tag.getString("NpcCommand"));
             } catch (IllegalArgumentException e) {
                 this.command = NpcCommand.IDLE;
+            }
+        }
+        if (tag.contains("FarmMode")) {
+            try {
+                this.farmMode = FarmMode.valueOf(tag.getString("FarmMode"));
+            } catch (IllegalArgumentException e) {
+                this.farmMode = FarmMode.AUTO;
             }
         }
         if (tag.contains("WorkZoneMin") && tag.contains("WorkZoneMax")) {

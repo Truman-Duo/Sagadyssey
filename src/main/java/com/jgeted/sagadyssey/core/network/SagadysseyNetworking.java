@@ -3,6 +3,7 @@ package com.jgeted.sagadyssey.core.network;
 import com.jgeted.sagadyssey.npc.faction.network.FactionDataSyncPayload;
 import com.jgeted.sagadyssey.npc.faction.network.FactionStandingsUpdatePayload;
 import com.jgeted.sagadyssey.npc.faction.network.RequestStandingsRefreshPacket;
+import com.jgeted.sagadyssey.npc.network.NpcFarmModePacket;
 import com.jgeted.sagadyssey.npc.network.NpcInteractionPacket;
 import com.jgeted.sagadyssey.npc.network.NpcProfessionPacket;
 import com.jgeted.sagadyssey.npc.network.NpcStatsPayload;
@@ -68,6 +69,13 @@ public class SagadysseyNetworking {
                 NpcProfessionPacket.TYPE,
                 NpcProfessionPacket.STREAM_CODEC,
                 NpcProfessionPacket::handle
+        );
+
+        // 客户端→服务端：农民务农模式切换
+        registrar.playToServer(
+                NpcFarmModePacket.TYPE,
+                NpcFarmModePacket.STREAM_CODEC,
+                NpcFarmModePacket::handle
         );
 
         // 客户端→服务端：NPC 交易

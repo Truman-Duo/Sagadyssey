@@ -33,6 +33,7 @@ public class NpcCommandScreen extends Screen {
     private final int kills;
     private final int moral;
     private final String commandName;
+    private final String farmModeName;
 
     private final List<NpcTradeOffer> trades;
 
@@ -67,6 +68,7 @@ public class NpcCommandScreen extends Screen {
         this.kills = data.kills();
         this.moral = data.moral();
         this.commandName = data.commandName();
+        this.farmModeName = data.farmModeName();
         this.trades = data.buildTrades();
         this.hasMount = data.hasMount();
         this.mountType = data.mountType();
@@ -104,7 +106,7 @@ public class NpcCommandScreen extends Screen {
                 .bounds(leftX, btnY1, workBtnW, 20)
                 .build());
 
-        // 工作按钮：农民→务农，工人→干活，其余职业置灰
+        // 工作按钮：农民→务农（打开务农模式面板），工人→干活，其余职业置灰
         NpcProfession prof = NpcProfession.fromDisplayName(professionName);
         boolean canWork = prof == NpcProfession.FARMER || prof == NpcProfession.WORKER;
         String workLabel = prof == NpcProfession.FARMER ? "务农"
@@ -112,8 +114,13 @@ public class NpcCommandScreen extends Screen {
         Button workBtn = Button.builder(
                 Component.literal(workLabel + (commandName.equals("WORK") ? " ✓" : "")),
                 btn -> {
-                    PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "work"));
-                    this.onClose();
+                    if (prof == NpcProfession.FARMER) {
+                        // 农民：弹出务农模式面板，选完模式再开始工作
+                        this.minecraft.setScreen(new NpcFarmModeScreen(npcId, npcName, farmModeName));
+                    } else {
+                        PacketDistributor.sendToServer(new NpcInteractionPacket(npcId, "work"));
+                        this.onClose();
+                    }
                 })
                 .bounds(btn2X, btnY1, workBtnW, 20)
                 .build();

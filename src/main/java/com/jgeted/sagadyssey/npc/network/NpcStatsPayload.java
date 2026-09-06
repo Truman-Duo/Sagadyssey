@@ -39,6 +39,7 @@ public record NpcStatsPayload(
         int recruitmentCost,
         boolean isOwned,
         String commandName,
+        String farmModeName,
         String factionName,
         String originalFaction,
         List<byte[]> rawTrades,
@@ -73,6 +74,7 @@ public record NpcStatsPayload(
                 buf.writeInt(packet.recruitmentCost);
                 buf.writeBoolean(packet.isOwned);
                 buf.writeByte(NpcCommand.valueOf(packet.commandName()).ordinal());
+                writeString(buf, packet.farmModeName());
                 writeString(buf, packet.factionName());
                 writeString(buf, packet.originalFaction());
                 // 交易数据：每个交易 = 完整 ItemStack 字节序列
@@ -107,6 +109,7 @@ public record NpcStatsPayload(
                 int cost = buf.readInt();
                 boolean owned = buf.readBoolean();
                 String cmd = NpcCommand.values()[buf.readByte()].name();
+                String farmModeName = readString(buf);
                 String factionName = readString(buf);
                 String originalFaction = readString(buf);
                 int tradeCount = buf.readInt();
@@ -126,7 +129,7 @@ public record NpcStatsPayload(
                 boolean leadMountMode = buf.readBoolean();
                 boolean mountLeashed = buf.readBoolean();
                 return new NpcStatsPayload(npcId, npcName, profName, curHp, maxHp, atk, spd, arm,
-                        lvl, exp, kills, moral, cost, owned, cmd, factionName, originalFaction, trades,
+                        lvl, exp, kills, moral, cost, owned, cmd, farmModeName, factionName, originalFaction, trades,
                         hasMount, mountType, mountHp, mountMaxHp, mountSpeed, mountName,
                         leadMountMode, mountLeashed);
             }
@@ -249,6 +252,7 @@ public record NpcStatsPayload(
                 cost,
                 npc.isOwned(),
                 npc.getCommand().name(),
+                npc.getFarmMode().name(),
                 npc.getFaction() != null ? npc.getFaction().id() : "sagadyssey:wilderness",
                 npc.getOriginalFaction() != null ? npc.getOriginalFaction() : "",
                 raw,

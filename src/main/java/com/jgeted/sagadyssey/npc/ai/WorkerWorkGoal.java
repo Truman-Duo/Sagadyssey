@@ -46,7 +46,10 @@ public class WorkerWorkGoal extends Goal {
         if (npc.getProfession() != NpcProfession.WORKER) return false;
         if (npc.getCommand() != NpcCommand.WORK) return false;
         if (npc.getTarget() != null || npc.isPassenger()) return false;
-        if (npc.tickCount % 20 != 0) return false;
+        // 每 20 tick 扫描一次，降低开销。相位按实体 id 对齐：
+        // 原版 goalSelector 只在 (tickCount+实体id) 为偶数的 tick 轮询 canUse，
+        // 奇数 id 的 NPC 用 tickCount%20==0（偶数 tick）永远轮询不到
+        if ((npc.tickCount - npc.getId()) % 20 != 0) return false;
 
         BlockPos found = findWork();
         if (found != null) {
